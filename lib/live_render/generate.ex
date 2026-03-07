@@ -153,17 +153,14 @@ if Code.ensure_loaded?(ReqLLM) do
     end
 
     defp build_messages(system, [], prompt) do
-      ReqLLM.Context.new([
+      [
         ReqLLM.Context.system(system),
         ReqLLM.Context.user(prompt)
-      ])
+      ]
     end
 
     defp build_messages(system, context, prompt) when is_list(context) do
-      ReqLLM.Context.new([
-        ReqLLM.Context.system(system)
-        | context ++ [ReqLLM.Context.user(prompt)]
-      ])
+      [ReqLLM.Context.system(system) | context ++ [ReqLLM.Context.user(prompt)]]
     end
 
     defp build_tools([]), do: []

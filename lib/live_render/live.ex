@@ -47,8 +47,7 @@ defmodule LiveRender.Live do
 
       @impl true
       def handle_info({:live_render, :text_chunk, token}, socket) do
-        {:noreply,
-         assign(socket, :lr_text, socket.assigns.lr_text <> token)}
+        {:noreply, assign(socket, :lr_text, socket.assigns.lr_text <> token)}
       end
 
       @impl true

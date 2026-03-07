@@ -145,22 +145,21 @@ defmodule LiveRender.SchemaAdapter do
 
   defp validate_json_schema(schema, props) do
     required = Map.get(schema, "required", [])
-    properties = Map.get(schema, "properties", %{})
 
     missing = Enum.filter(required, &(not Map.has_key?(props, &1)))
 
     if missing != [] do
       {:error, "missing required properties: #{Enum.join(missing, ", ")}"}
     else
-      resolved =
-        Enum.reduce(properties, %{}, fn {key, _prop_schema}, acc ->
-          case Map.fetch(props, key) do
-            {:ok, value} -> Map.put(acc, String.to_atom(key), value)
-            :error -> acc
-          end
-        end)
-
-      {:ok, resolved}
+      {:ok, resolve_properties(schema, props)}
     end
+  end
+
+  defp resolve_properties(schema, props) do
+    properties = Map.get(schema, "properties", %{})
+
+    Map.new(properties, fn {key, _} -> {String.to_atom(key), Map.get(props, key)} end)
+    |> Enum.reject(fn {_, v} -> is_nil(v) end)
+    |> Map.new()
   end
 end

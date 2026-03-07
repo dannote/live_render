@@ -51,6 +51,8 @@ defmodule LiveRender.Component do
   @doc false
   defmacro __using__(opts) do
     quote do
+      @moduledoc false
+
       @_lr_name Keyword.fetch!(unquote(opts), :name)
       @_lr_description Keyword.get(unquote(opts), :description, "")
       @_lr_schema Keyword.get(unquote(opts), :schema, [])

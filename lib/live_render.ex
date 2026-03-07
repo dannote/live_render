@@ -72,76 +72,90 @@ defmodule LiveRender do
   attr(:prefix, :string, required: true)
 
   defp render_node(assigns) do
-    elements = assigns.spec["elements"] || %{}
-    node = elements[assigns.node_id]
+    node = get_node(assigns.spec, assigns.node_id)
+    component_mod = node && assigns.catalog.get(node["type"])
 
-    if is_nil(node) do
+    if is_nil(component_mod) do
       ~H""
     else
-      component_mod = assigns.catalog.get(node["type"])
+      assigns = prepare_node_assigns(assigns, node, component_mod)
 
-      if is_nil(component_mod) do
-        ~H""
-      else
-        visible? = check_visibility(node["visible"], assigns.state)
-
-        raw_props = node["props"] || %{}
-        resolved_props = StateResolver.resolve(raw_props, assigns.state)
-
-        validated_props =
-          case component_mod.validate_props(resolved_props) do
-            {:ok, props} -> props
-            {:error, _} -> atomize_keys(resolved_props)
-          end
-
-        children = node["children"] || []
-        has_children? = children != []
-        has_slots? = component_mod.component_slots() != []
-        freeze? = not assigns.streaming or not last_active_node?(assigns.spec, assigns.node_id)
-
-        assigns =
-          assigns
-          |> assign(:visible?, visible?)
-          |> assign(:validated_props, validated_props)
-          |> assign(:children, children)
-          |> assign(:has_children?, has_children?)
-          |> assign(:has_slots?, has_slots?)
-          |> assign(:freeze?, freeze?)
-          |> assign(:component_mod, component_mod)
-          |> assign(:node, node)
-
-        component_assigns =
-          if has_children? and has_slots? do
-            inner_block = [
-              %{
-                __slot__: :inner_block,
-                inner_block: fn _args, _caller -> render_children(assigns) end
-              }
-            ]
-
-            Map.put(validated_props, :inner_block, inner_block)
-          else
-            validated_props
-          end
-
-        assigns =
-          assigns
-          |> assign(:component_assigns, component_assigns)
-
-        ~H"""
-        <div
-          :if={@visible?}
-          id={"#{@prefix}-#{@node_id}"}
-          phx-update={if @freeze?, do: "ignore"}
-        >
-          <%= @component_mod.render(Map.put(@component_assigns, :__changed__, %{})) %>
-          <%= unless @has_children? and @has_slots? do %>
-            <%= render_children(assigns) %>
-          <% end %>
-        </div>
-        """
-      end
+      ~H"""
+      <div
+        :if={@visible?}
+        id={"#{@prefix}-#{@node_id}"}
+        phx-update={if @freeze?, do: "ignore"}
+      >
+        <%= @component_mod.render(Map.put(@component_assigns, :__changed__, %{})) %>
+        <%= unless @has_children? and @has_slots? do %>
+          <.render_node
+            :for={child_id <- @children}
+            spec={@spec}
+            node_id={child_id}
+            catalog={@catalog}
+            state={@state}
+            streaming={@streaming}
+            prefix={@prefix}
+          />
+        <% end %>
+      </div>
+      """
     end
+  end
+
+  defp get_node(spec, node_id) do
+    elements = spec["elements"] || %{}
+    elements[node_id]
+  end
+
+  defp prepare_node_assigns(assigns, node, component_mod) do
+    validated_props = resolve_and_validate(node, component_mod, assigns.state)
+    children = node["children"] || []
+    has_children? = children != []
+    has_slots? = component_mod.component_slots() != []
+
+    component_assigns =
+      if has_children? and has_slots? do
+        Map.put(validated_props, :inner_block, build_inner_block(assigns, children))
+      else
+        validated_props
+      end
+
+    assigns
+    |> assign(:visible?, check_visibility(node["visible"], assigns.state))
+    |> assign(:validated_props, validated_props)
+    |> assign(:children, children)
+    |> assign(:has_children?, has_children?)
+    |> assign(:has_slots?, has_slots?)
+    |> assign(
+      :freeze?,
+      not assigns.streaming or not last_active_node?(assigns.spec, assigns.node_id)
+    )
+    |> assign(:component_mod, component_mod)
+    |> assign(:component_assigns, component_assigns)
+  end
+
+  defp resolve_and_validate(node, component_mod, state) do
+    raw_props = node["props"] || %{}
+    resolved = StateResolver.resolve(raw_props, state)
+
+    case component_mod.validate_props(resolved) do
+      {:ok, props} -> props
+      {:error, _} -> atomize_keys(resolved)
+    end
+  end
+
+  defp build_inner_block(assigns, children) do
+    child_assigns = assign(assigns, :children, children)
+
+    [
+      %{
+        __slot__: :inner_block,
+        inner_block: fn _args, _caller ->
+          render_children(child_assigns)
+        end
+      }
+    ]
   end
 
   defp render_children(assigns) do
@@ -189,8 +203,7 @@ defmodule LiveRender do
     elements = spec["elements"] || %{}
     root = spec["root"]
 
-    last_id = find_last_leaf(elements, root)
-    node_id == last_id
+    find_last_leaf(elements, root) == node_id
   end
 
   defp find_last_leaf(elements, id) do
