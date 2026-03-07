@@ -1,15 +1,20 @@
 defmodule Example.Agent do
   @moduledoc """
-  AI agent with tool calling that generates LiveRender specs.
+  AI agent using Jido's ReAct runtime with tool calling.
 
-  Streams text tokens back to the caller process and, once complete,
-  extracts any `spec` fence into a parsed spec map.
+  Streams ReAct events (`:llm_delta`, `:tool_started`, `:tool_completed`)
+  back to the LiveView process as `{:live_render, ...}` messages.
   """
 
   @default_model "anthropic:claude-haiku-4-5"
-  @max_tool_rounds 5
 
-  @spec_fence_regex ~r/```spec\n([\s\S]*?)(?:```|$)/
+  @tools [
+    Example.Tools.Weather,
+    Example.Tools.CryptoPrice,
+    Example.Tools.CryptoPriceHistory,
+    Example.Tools.GitHubRepo,
+    Example.Tools.HackerNews
+  ]
 
   @custom_rules [
     "NEVER use viewport height classes (min-h-screen, h-screen) — the UI renders inside a fixed-size container.",
@@ -19,167 +24,98 @@ defmodule Example.Agent do
     "For educational prompts ('teach me about', 'explain', 'what is'), use a mix of Callout, Accordion, Timeline to make the content visually rich."
   ]
 
-  defp tools do
-    [
-      Example.Tools.Weather.tool(),
-      Example.Tools.Crypto.price_tool(),
-      Example.Tools.Crypto.history_tool(),
-      Example.Tools.GitHub.repo_tool(),
-      Example.Tools.HackerNews.tool()
-    ]
-  end
+  @spec_fence_regex ~r/```spec\n([\s\S]*?)(?:```|$)/
 
   @doc """
-  Starts a conversation with the agent.
+  Starts a streamed conversation with the ReAct agent.
 
-  Sends these messages to `pid`:
-  - `{:live_render, :tool_start, name}` — a tool call is starting
-  - `{:live_render, :tool_done, name, result}` — a tool call finished
-  - `{:live_render, :text_chunk, token}` — streaming text token
+  Sends messages to `pid`:
+  - `{:live_render, :tool_start, name}` — tool execution started
+  - `{:live_render, :tool_done, name, result}` — tool execution finished
+  - `{:live_render, :text_chunk, text}` — streaming text delta
   - `{:live_render, :spec, spec}` — parsed UI spec
   - `{:live_render, :done}` — generation complete
-  - `{:live_render, :error, reason}` — something went wrong
+  - `{:live_render, :error, reason}` — failure
   """
   def chat(prompt, pid, opts \\ []) do
     model = Keyword.get(opts, :model, @default_model)
-    context = Keyword.get(opts, :context, [])
 
     Task.start(fn ->
-      system = build_system_prompt()
+      config = %{
+        model: model,
+        system_prompt: build_system_prompt(),
+        tools: @tools,
+        max_iterations: 5,
+        streaming: true,
+        temperature: 0.7,
+        max_tokens: 4096
+      }
 
-      messages =
-        ReqLLM.Context.new(
-          [ReqLLM.Context.system(system)] ++
-            context ++
-            [ReqLLM.Context.user(prompt)]
-        )
+      try do
+        text =
+          Jido.AI.Reasoning.ReAct.stream(prompt, config)
+          |> Enum.reduce("", fn event, text_acc ->
+            case event.kind do
+              :llm_delta ->
+                delta = get_in(event.data, [:delta]) || ""
 
-      case run_with_tools(model, messages, tools(), pid, 0) do
-        {:ok, _text} -> send(pid, {:live_render, :done})
-        {:error, reason} -> send(pid, {:live_render, :error, reason})
-      end
-    end)
-  end
+                if delta != "" do
+                  send(pid, {:live_render, :text_chunk, delta})
+                end
 
-  defp run_with_tools(model, messages, tools, pid, round) when round < @max_tool_rounds do
-    case ReqLLM.stream_text(model, messages.messages, tools: tools) do
-      {:ok, response} ->
-        {text, tool_calls} = consume_stream(response, pid)
+                text_acc <> delta
 
-        if tool_calls == [] do
-          maybe_send_spec(text, pid)
-          {:ok, text}
-        else
-          assistant_msg = ReqLLM.Context.assistant(text, tool_calls: tool_calls)
-          messages = ReqLLM.Context.append(messages, assistant_msg)
+              :tool_started ->
+                name = event.tool_name || event.data[:tool_name] || "unknown"
+                send(pid, {:live_render, :tool_start, name})
+                text_acc
 
-          messages = execute_tools(tool_calls, tools, messages, pid)
+              :tool_completed ->
+                name = event.tool_name || event.data[:tool_name] || "unknown"
+                result = event.data[:result]
+                send(pid, {:live_render, :tool_done, name, result})
+                text_acc
 
-          run_with_tools(model, messages, tools, pid, round + 1)
-        end
+              :llm_completed ->
+                result_text = get_in(event.data, [:result]) || ""
 
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
+                if result_text != "" and text_acc == "" do
+                  send(pid, {:live_render, :text_chunk, result_text})
+                  result_text
+                else
+                  text_acc
+                end
 
-  defp run_with_tools(model, messages, _tools, pid, _round) do
-    case ReqLLM.stream_text(model, messages.messages) do
-      {:ok, response} ->
-        {text, _} = consume_stream(response, pid)
-        maybe_send_spec(text, pid)
-        {:ok, text}
+              :request_completed ->
+                result_text = get_in(event.data, [:result]) || ""
 
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
+                final_text =
+                  if result_text != "" and text_acc == "" do
+                    send(pid, {:live_render, :text_chunk, result_text})
+                    result_text
+                  else
+                    text_acc
+                  end
 
-  defp consume_stream(response, pid) do
-    chunks =
-      response.stream
-      |> Enum.map(fn chunk ->
-        if chunk.text && chunk.text != "" do
-          send(pid, {:live_render, :text_chunk, chunk.text})
-        end
+                maybe_send_spec(final_text, pid)
+                final_text
 
-        chunk
-      end)
+              :request_failed ->
+                error = event.data[:error] || "Unknown error"
+                send(pid, {:live_render, :error, error})
+                text_acc
 
-    text = chunks |> Enum.map_join("", & &1.text)
-    tool_calls = extract_tool_calls(chunks)
-
-    {text, tool_calls}
-  end
-
-  defp extract_tool_calls(chunks) do
-    base_calls =
-      chunks
-      |> Enum.filter(&(&1.type == :tool_call))
-      |> Enum.map(fn chunk ->
-        %{
-          id: Map.get(chunk.metadata, :id) || "call_#{:erlang.unique_integer([:positive])}",
-          name: chunk.name,
-          arguments: chunk.arguments || %{},
-          index: Map.get(chunk.metadata, :index, 0)
-        }
-      end)
-
-    arg_fragments =
-      chunks
-      |> Enum.filter(fn
-        %{type: :meta, metadata: %{tool_call_args: _}} -> true
-        _ -> false
-      end)
-      |> Enum.group_by(& &1.metadata.tool_call_args.index)
-      |> Map.new(fn {index, frags} ->
-        json = frags |> Enum.map_join("", & &1.metadata.tool_call_args.fragment)
-        {index, json}
-      end)
-
-    base_calls
-    |> Enum.map(fn call ->
-      call =
-        case Map.get(arg_fragments, call.index) do
-          nil ->
-            call
-
-          json ->
-            case Jason.decode(json) do
-              {:ok, args} -> %{call | arguments: args}
-              _ -> call
+              _ ->
+                text_acc
             end
-        end
+          end)
 
-      Map.delete(call, :index)
-    end)
-  end
-
-  defp execute_tools(tool_calls, tools, messages, pid) do
-    Enum.reduce(tool_calls, messages, fn call, ctx ->
-      send(pid, {:live_render, :tool_start, call.name})
-
-      tool = Enum.find(tools, &(&1.name == call.name))
-
-      {result_text, _} =
-        if tool do
-          case ReqLLM.Tool.execute(tool, call.arguments) do
-            {:ok, result} ->
-              send(pid, {:live_render, :tool_done, call.name, result})
-              {Jason.encode!(result), result}
-
-            {:error, error} ->
-              msg = inspect(error)
-              send(pid, {:live_render, :tool_done, call.name, %{error: msg}})
-              {Jason.encode!(%{error: msg}), nil}
-          end
-        else
-          send(pid, {:live_render, :tool_done, call.name, %{error: "unknown tool"}})
-          {Jason.encode!(%{error: "Tool #{call.name} not found"}), nil}
-        end
-
-      tool_result = ReqLLM.Context.tool_result_message(call.name, call.id, result_text)
-      ReqLLM.Context.append(ctx, tool_result)
+        maybe_send_spec(text, pid)
+        send(pid, {:live_render, :done})
+      rescue
+        e ->
+          send(pid, {:live_render, :error, Exception.message(e)})
+      end
     end)
   end
 

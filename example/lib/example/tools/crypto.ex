@@ -1,39 +1,22 @@
-defmodule Example.Tools.Crypto do
+defmodule Example.Tools.CryptoPrice do
   @moduledoc """
-  Crypto tools using CoinGecko API (free, no key required).
+  Current crypto market data from CoinGecko (free, no key required).
   """
 
-  def price_tool do
-    LiveRender.Tool.new!(
-      name: "get_crypto_price",
-      description:
-        "Get current price, market cap, 24h change, and 7-day sparkline for a cryptocurrency.",
-      parameter_schema: [
-        coin_id: [
-          type: :string,
-          required: true,
-          doc: "CoinGecko coin ID (e.g., 'bitcoin', 'ethereum', 'solana')"
-        ]
-      ],
-      callback: &fetch_price/1
-    )
-  end
+  use Jido.Action,
+    name: "get_crypto_price",
+    description:
+      "Get current price, market cap, 24h change, and 7-day sparkline for a cryptocurrency.",
+    schema: [
+      coin_id: [
+        type: :string,
+        required: true,
+        doc: "CoinGecko coin ID (e.g., 'bitcoin', 'ethereum', 'solana')"
+      ]
+    ]
 
-  def history_tool do
-    LiveRender.Tool.new!(
-      name: "get_crypto_price_history",
-      description: "Get historical price data for a cryptocurrency over a specified number of days.",
-      parameter_schema: [
-        coin_id: [type: :string, required: true, doc: "CoinGecko coin ID"],
-        days: [type: :pos_integer, required: true, doc: "Number of days of history (1-365)"]
-      ],
-      callback: &fetch_history/1
-    )
-  end
-
-  def fetch_price(%{coin_id: id}), do: fetch_price(%{"coin_id" => id})
-
-  def fetch_price(%{"coin_id" => coin_id}) do
+  @impl true
+  def run(%{coin_id: coin_id}, _context) do
     url =
       "https://api.coingecko.com/api/v3/coins/#{URI.encode(coin_id)}" <>
         "?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=true"
@@ -77,17 +60,41 @@ defmodule Example.Tools.Crypto do
     end
   end
 
-  def fetch_history(%{coin_id: id, days: d}), do: fetch_history(%{"coin_id" => id, "days" => d})
+  defp sample(list, max_points) do
+    len = length(list)
+    step = max(1, div(len, max_points))
+    list |> Enum.take_every(step) |> Enum.take(max_points)
+  end
+end
 
-  def fetch_history(%{"coin_id" => coin_id, "days" => days}) do
+defmodule Example.Tools.CryptoPriceHistory do
+  @moduledoc """
+  Historical crypto price data from CoinGecko (free, no key required).
+  """
+
+  use Jido.Action,
+    name: "get_crypto_price_history",
+    description:
+      "Get historical price data for a cryptocurrency over a specified number of days.",
+    schema: [
+      coin_id: [type: :string, required: true, doc: "CoinGecko coin ID"],
+      days: [type: :pos_integer, required: true, doc: "Number of days of history (1-365)"]
+    ]
+
+  @impl true
+  def run(%{coin_id: coin_id, days: days}, _context) do
     url =
       "https://api.coingecko.com/api/v3/coins/#{URI.encode(coin_id)}/market_chart?vs_currency=usd&days=#{days}"
 
     case Req.get(url) do
       {:ok, %{status: 200, body: %{"prices" => prices}}} ->
+        len = length(prices)
+        step = max(1, div(len, 20))
+
         history =
           prices
-          |> sample(20)
+          |> Enum.take_every(step)
+          |> Enum.take(20)
           |> Enum.map(fn [ts, price] ->
             date =
               ts
@@ -103,11 +110,5 @@ defmodule Example.Tools.Crypto do
       _ ->
         {:error, "Failed to fetch price history for #{coin_id}"}
     end
-  end
-
-  defp sample(list, max_points) do
-    len = length(list)
-    step = max(1, div(len, max_points))
-    list |> Enum.take_every(step) |> Enum.take(max_points)
   end
 end

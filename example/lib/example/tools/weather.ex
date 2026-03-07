@@ -3,6 +3,15 @@ defmodule Example.Tools.Weather do
   Weather tool using Open-Meteo API (free, no key required).
   """
 
+  use Jido.Action,
+    name: "get_weather",
+    description:
+      "Get current weather conditions and a 7-day forecast for a given city. " <>
+        "Returns temperature, humidity, wind speed, weather conditions, and daily forecasts.",
+    schema: [
+      city: [type: :string, required: true, doc: "City name (e.g., 'New York', 'London')"]
+    ]
+
   @weather_codes %{
     0 => "Clear sky",
     1 => "Mainly clear",
@@ -27,22 +36,8 @@ defmodule Example.Tools.Weather do
     99 => "Thunderstorm with heavy hail"
   }
 
-  def tool do
-    LiveRender.Tool.new!(
-      name: "get_weather",
-      description:
-        "Get current weather conditions and a 7-day forecast for a given city. " <>
-          "Returns temperature, humidity, wind speed, weather conditions, and daily forecasts.",
-      parameter_schema: [
-        city: [type: :string, required: true, doc: "City name (e.g., 'New York', 'London')"]
-      ],
-      callback: &fetch/1
-    )
-  end
-
-  def fetch(%{city: city}), do: fetch(%{"city" => city})
-
-  def fetch(%{"city" => city}) do
+  @impl true
+  def run(%{city: city}, _context) do
     with {:ok, location} <- geocode(city),
          {:ok, weather} <- fetch_weather(location) do
       forecast =

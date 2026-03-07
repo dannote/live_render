@@ -1,23 +1,18 @@
 defmodule Example.Tools.HackerNews do
   @moduledoc """
-  Hacker News tool using the Firebase API (free, no auth).
+  Hacker News top stories using the Firebase API (free, no auth).
   """
 
-  def tool do
-    LiveRender.Tool.new!(
-      name: "get_hackernews_top",
-      description:
-        "Get the current top stories from Hacker News, including title, score, author, URL, and comment count.",
-      parameter_schema: [
-        count: [type: :pos_integer, required: true, doc: "Number of top stories to fetch (1-30)"]
-      ],
-      callback: &fetch_top/1
-    )
-  end
+  use Jido.Action,
+    name: "get_hackernews_top",
+    description:
+      "Get the current top stories from Hacker News, including title, score, author, URL, and comment count.",
+    schema: [
+      count: [type: :pos_integer, required: true, doc: "Number of top stories to fetch (1-30)"]
+    ]
 
-  def fetch_top(%{count: c}), do: fetch_top(%{"count" => c})
-
-  def fetch_top(%{"count" => count}) do
+  @impl true
+  def run(%{count: count}, _context) do
     count = min(count, 30)
 
     case Req.get("https://hacker-news.firebaseio.com/v0/topstories.json") do
@@ -32,7 +27,8 @@ defmodule Example.Tools.HackerNews do
                   %{
                     id: story["id"],
                     title: story["title"],
-                    url: story["url"] || "https://news.ycombinator.com/item?id=#{story["id"]}",
+                    url:
+                      story["url"] || "https://news.ycombinator.com/item?id=#{story["id"]}",
                     score: story["score"],
                     author: story["by"],
                     comments: story["descendants"] || 0,

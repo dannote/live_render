@@ -1,26 +1,21 @@
-defmodule Example.Tools.GitHub do
+defmodule Example.Tools.GitHubRepo do
   @moduledoc """
-  GitHub tools using the public REST API (no auth, 60 req/hr).
+  GitHub repo info using the public REST API (no auth, 60 req/hr).
   """
+
+  use Jido.Action,
+    name: "get_github_repo",
+    description:
+      "Get information about a public GitHub repository including stars, forks, issues, languages, and topics.",
+    schema: [
+      owner: [type: :string, required: true, doc: "Repository owner (e.g., 'vercel')"],
+      repo: [type: :string, required: true, doc: "Repository name (e.g., 'next.js')"]
+    ]
 
   @headers [{"accept", "application/vnd.github.v3+json"}]
 
-  def repo_tool do
-    LiveRender.Tool.new!(
-      name: "get_github_repo",
-      description:
-        "Get information about a public GitHub repository including stars, forks, issues, languages, and topics.",
-      parameter_schema: [
-        owner: [type: :string, required: true, doc: "Repository owner (e.g., 'vercel')"],
-        repo: [type: :string, required: true, doc: "Repository name (e.g., 'next.js')"]
-      ],
-      callback: &fetch_repo/1
-    )
-  end
-
-  def fetch_repo(%{owner: o, repo: r}), do: fetch_repo(%{"owner" => o, "repo" => r})
-
-  def fetch_repo(%{"owner" => owner, "repo" => repo}) do
+  @impl true
+  def run(%{owner: owner, repo: repo}, _context) do
     base = "https://api.github.com/repos/#{URI.encode(owner)}/#{URI.encode(repo)}"
 
     tasks = [

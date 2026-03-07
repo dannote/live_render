@@ -50,6 +50,13 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Jido AI model aliases
+config :jido_ai,
+  model_aliases: %{
+    fast: "anthropic:claude-haiku-4-5",
+    capable: "anthropic:claude-sonnet-4-20250514"
+  }
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

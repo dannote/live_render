@@ -42,7 +42,9 @@ defmodule Example.MixProject do
     [
       {:live_render, path: ".."},
       {:phoenix_streamdown, "~> 1.0.0-beta"},
-      {:req_llm, "~> 1.6"},
+      {:jido, "~> 2.0"},
+      {:jido_ai, "~> 2.0.0-rc"},
+      {:jido_action, "~> 2.0"},
       {:phoenix, "~> 1.8.4"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
