@@ -4,95 +4,98 @@ Server-driven generative UI for Phoenix LiveView.
 
 AI generates a JSON spec → LiveView resolves it to function components server-side → LiveView diffs only the changed HTML over the WebSocket.
 
+Inspired by Vercel's [json-render](https://github.com/vercel-labs/json-render), built idiomatically for the BEAM.
+
 ## Installation
 
 ```elixir
 def deps do
   [
     {:live_render, "~> 0.1"},
-    {:req_llm, "~> 1.6"}     # optional — for LLM integration
+    {:jido_ai, "~> 2.0.0-rc"},   # recommended — agent loop + tool calling
+    {:jido_action, "~> 2.0"},     # recommended — typed tool contract
+    {:req_llm, "~> 1.6"}          # or use standalone for direct LLM calls
   ]
 end
 ```
 
 ## Quick Start
 
-### With ReqLLM (recommended)
-
-```elixir
-defmodule MyAppWeb.DashboardLive do
-  use MyAppWeb, :live_view
-  use LiveRender.Live
-
-  @impl true
-  def mount(_params, _session, socket) do
-    {:ok, init_live_render(socket)}
-  end
-
-  @impl true
-  def render(assigns) do
-    ~H"""
-    <form phx-submit="generate">
-      <input type="text" name="prompt" placeholder="Describe a dashboard..." />
-      <button type="submit">Generate</button>
-    </form>
-
-    <div :if={@lr_text != ""} class="prose"><%= @lr_text %></div>
-
-    <LiveRender.render
-      :if={@lr_spec != %{}}
-      spec={@lr_spec}
-      catalog={LiveRender.StandardCatalog}
-      streaming={@lr_streaming?}
-    />
-    """
-  end
-
-  @impl true
-  def handle_event("generate", %{"prompt" => prompt}, socket) do
-    LiveRender.Generate.stream_spec("anthropic:claude-haiku-4-5", prompt,
-      catalog: LiveRender.StandardCatalog,
-      pid: self()
-    )
-
-    {:noreply, start_live_render(socket)}
-  end
-end
-```
-
-`use LiveRender.Live` sets up `handle_info` clauses for all `{:live_render, ...}` messages
-and provides `init_live_render/1` / `start_live_render/1` helpers.
-
-### With tools
-
-```elixir
-tools = [
-  LiveRender.Tool.new!(
-    name: "get_weather",
-    description: "Get current weather for a location",
-    parameter_schema: [
-      location: [type: :string, required: true, doc: "City name"]
-    ],
-    callback: fn args -> {:ok, Weather.fetch(args[:location])} end
-  )
-]
-
-LiveRender.Generate.stream_spec("anthropic:claude-haiku-4-5", prompt,
-  catalog: MyApp.AI.Catalog,
-  pid: self(),
-  tools: tools
-)
-```
-
-`LiveRender.Tool` delegates to `ReqLLM.Tool` — all schema formats work: NimbleOptions keyword lists, JSONSpec maps, or raw JSON Schema.
-
-### Without ReqLLM
-
-Bring your own LLM client. Feed the spec map to the renderer:
+### Render a spec
 
 ```heex
 <LiveRender.render spec={@spec} catalog={LiveRender.StandardCatalog} streaming={@streaming?} />
 ```
+
+### With Jido agent + tools (recommended)
+
+Define tools as `Jido.Action` modules:
+
+```elixir
+defmodule MyApp.Tools.Weather do
+  use Jido.Action,
+    name: "get_weather",
+    description: "Get weather for a city",
+    schema: [city: [type: :string, required: true, doc: "City name"]]
+
+  @impl true
+  def run(%{city: city}, _context) do
+    # call weather API...
+    {:ok, %{temperature: 72, condition: "Sunny"}}
+  end
+end
+```
+
+Run the ReAct agent loop and stream events to your LiveView:
+
+```elixir
+def handle_event("ask", %{"prompt" => prompt}, socket) do
+  Task.start(fn ->
+    config = %{
+      model: "anthropic:claude-haiku-4-5",
+      system_prompt: MyCatalog.system_prompt(),
+      tools: [MyApp.Tools.Weather],
+      max_iterations: 5,
+      streaming: true
+    }
+
+    Jido.AI.Reasoning.ReAct.stream(prompt, config)
+    |> Enum.each(fn event ->
+      case event.kind do
+        :llm_delta -> send(pid, {:live_render, :text_chunk, event.data[:delta]})
+        :tool_started -> send(pid, {:live_render, :tool_start, event.tool_name})
+        :tool_completed -> send(pid, {:live_render, :tool_done, event.tool_name, event.data[:result]})
+        _ -> :ok
+      end
+    end)
+  end)
+
+  {:noreply, assign(socket, streaming?: true)}
+end
+```
+
+See the [example app](example/) for a complete chat with weather, crypto, GitHub, and Hacker News tools.
+
+### With ReqLLM (standalone)
+
+```elixir
+use LiveRender.Live
+
+def handle_event("generate", %{"prompt" => prompt}, socket) do
+  LiveRender.Generate.stream_spec("anthropic:claude-haiku-4-5", prompt,
+    catalog: LiveRender.StandardCatalog,
+    pid: self()
+  )
+
+  {:noreply, start_live_render(socket)}
+end
+```
+
+`use LiveRender.Live` handles all `{:live_render, ...}` messages and provides `init_live_render/1` / `start_live_render/1`.
+
+### Without any LLM dependency
+
+Bring your own client. Feed the spec map to the renderer directly.
 
 ## Spec Format
 
@@ -115,7 +118,9 @@ Bring your own LLM client. Feed the spec map to the renderer:
 }
 ```
 
-## Custom Components
+## Components
+
+Define components with `use LiveRender.Component`:
 
 ```elixir
 defmodule MyApp.AI.Components.Metric do
@@ -141,7 +146,7 @@ defmodule MyApp.AI.Components.Metric do
 end
 ```
 
-Schemas also support [JSONSpec](https://hex.pm/packages/json_spec) syntax:
+Schemas also support [JSONSpec](https://hex.pm/packages/json_spec):
 
 ```elixir
 import JSONSpec
@@ -155,7 +160,15 @@ use LiveRender.Component,
   )
 ```
 
-## Custom Catalog
+### Built-in components
+
+**Layout:** Stack, Card, Grid, Separator
+**Typography:** Heading, Text
+**Data:** Metric, Badge, Table, Link
+**Interactive:** Button, Tabs, TabContent
+**Rich content:** Callout, Timeline, Accordion, Progress, Alert
+
+## Catalog
 
 ```elixir
 defmodule MyApp.AI.Catalog do
@@ -167,21 +180,14 @@ defmodule MyApp.AI.Catalog do
 
   action :refresh_data, description: "Refresh all metrics"
 end
+
+MyApp.AI.Catalog.system_prompt()   # LLM system prompt with all component schemas
+MyApp.AI.Catalog.json_schema()     # JSON Schema for structured output mode
 ```
-
-Generate a system prompt from your catalog:
-
-```elixir
-MyApp.AI.Catalog.system_prompt()
-```
-
-The prompt describes all registered components with their props, types, and
-descriptions — ready to embed in an LLM call. `json_schema/0` returns a
-JSON Schema for structured output mode.
 
 ## Data Binding
 
-Props can reference a state model using expressions:
+Props reference a state model using expressions:
 
 - `{"$state": "/path/to/value"}` — read from state
 - `{"$cond": {"$state": "/flag"}, "$then": "yes", "$else": "no"}` — conditional
@@ -189,17 +195,29 @@ Props can reference a state model using expressions:
 
 ## Streaming
 
-During LLM streaming, stable elements get `phx-update="ignore"` so LiveView skips them — only the last element re-renders per chunk.
+Stable elements get `phx-update="ignore"` so LiveView skips them — only the actively streaming element re-renders per chunk.
 
-When using `LiveRender.Generate`, text chunks arrive as `{:live_render, :text_chunk, token}` and the final parsed spec arrives as `{:live_render, :spec, spec}`. Use `LiveRender.Live` to handle these automatically, or pattern-match them yourself.
+## Example App
 
-## Built-in Components
+The [example/](example/) directory contains a full chat application porting Vercel's json-render chat example to Phoenix LiveView:
 
-**Layout:** Stack, Card, Grid, Separator
-**Typography:** Heading, Text
-**Data:** Metric, Badge, Table, Link
-**Interactive:** Button, Tabs, TabContent
-**Rich content:** Callout, Timeline, Accordion, Progress, Alert
+- **Tools** as `Jido.Action` modules: weather (Open-Meteo), crypto (CoinGecko), GitHub, Hacker News
+- **Agent** using `Jido.AI.Reasoning.ReAct.stream/3` for the tool loop
+- **PhoenixStreamdown** for streaming markdown text
+- **LiveRender** for AI-generated dashboard specs
+
+```bash
+cd example
+cp .env.example .env  # add ANTHROPIC_API_KEY
+mix setup
+mix phx.server
+```
+
+## Development
+
+```bash
+mix ci  # compile, format, credo, dialyzer, ex_dna, test
+```
 
 ## License
 
