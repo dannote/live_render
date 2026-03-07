@@ -1,7 +1,7 @@
 defmodule LiveRender.MixProject do
   use Mix.Project
 
-  @version "0.1.0-dev"
+  @version "0.1.0"
   @source_url "https://github.com/dannote/live_render"
 
   def project do
@@ -73,8 +73,10 @@ defmodule LiveRender.MixProject do
 
   defp package do
     [
+      maintainers: ["Danila Poyarkov"],
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url}
+      links: %{"GitHub" => @source_url, "Changelog" => "#{@source_url}/blob/master/CHANGELOG.md"},
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end
 
@@ -82,7 +84,8 @@ defmodule LiveRender.MixProject do
     [
       main: "LiveRender",
       source_ref: "v#{@version}",
-      source_url: @source_url
+      source_url: @source_url,
+      extras: ["CHANGELOG.md"]
     ]
   end
 end

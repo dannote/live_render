@@ -1,174 +1,22 @@
 # LiveRender
 
-Server-driven generative UI for Phoenix LiveView.
+**Generative UI for Phoenix LiveView.**
 
-AI generates a JSON spec → LiveView resolves it to function components server-side → LiveView diffs only the changed HTML over the WebSocket.
+AI generates a JSON spec → LiveView resolves it to function components server-side → pushes only HTML diffs over the WebSocket.
 
 Inspired by Vercel's [json-render](https://github.com/vercel-labs/json-render), built idiomatically for the BEAM.
 
-## Installation
+## Why LiveRender?
 
-```elixir
-def deps do
-  [
-    {:live_render, "~> 0.1"},
-    {:jido_ai, "~> 2.0.0-rc"},   # recommended — agent loop + tool calling
-    {:jido_action, "~> 2.0"},     # recommended — typed tool contract
-    {:req_llm, "~> 1.6"}          # or use standalone for direct LLM calls
-  ]
-end
-```
+- **Guardrailed** — AI can only use components you register in a catalog
+- **Server-side** — specs stay on the server; no JSON runtime shipped to the client
+- **Streaming** — stable elements freeze with `phx-update="ignore"`, only the active node re-renders
+- **Batteries included** — 18 built-in components ready to use
+- **Bring your own LLM** — works with ReqLLM, Jido, or any client that produces a spec map
 
 ## Quick Start
 
-### Render a spec
-
-```heex
-<LiveRender.render spec={@spec} catalog={LiveRender.StandardCatalog} streaming={@streaming?} />
-```
-
-### With Jido agent + tools (recommended)
-
-Define tools as `Jido.Action` modules:
-
-```elixir
-defmodule MyApp.Tools.Weather do
-  use Jido.Action,
-    name: "get_weather",
-    description: "Get weather for a city",
-    schema: [city: [type: :string, required: true, doc: "City name"]]
-
-  @impl true
-  def run(%{city: city}, _context) do
-    # call weather API...
-    {:ok, %{temperature: 72, condition: "Sunny"}}
-  end
-end
-```
-
-Run the ReAct agent loop and stream events to your LiveView:
-
-```elixir
-def handle_event("ask", %{"prompt" => prompt}, socket) do
-  Task.start(fn ->
-    config = %{
-      model: "anthropic:claude-haiku-4-5",
-      system_prompt: MyCatalog.system_prompt(),
-      tools: [MyApp.Tools.Weather],
-      max_iterations: 5,
-      streaming: true
-    }
-
-    Jido.AI.Reasoning.ReAct.stream(prompt, config)
-    |> Enum.each(fn event ->
-      case event.kind do
-        :llm_delta -> send(pid, {:live_render, :text_chunk, event.data[:delta]})
-        :tool_started -> send(pid, {:live_render, :tool_start, event.tool_name})
-        :tool_completed -> send(pid, {:live_render, :tool_done, event.tool_name, event.data[:result]})
-        _ -> :ok
-      end
-    end)
-  end)
-
-  {:noreply, assign(socket, streaming?: true)}
-end
-```
-
-See the [example app](example/) for a complete chat with weather, crypto, GitHub, and Hacker News tools.
-
-### With ReqLLM (standalone)
-
-```elixir
-use LiveRender.Live
-
-def handle_event("generate", %{"prompt" => prompt}, socket) do
-  LiveRender.Generate.stream_spec("anthropic:claude-haiku-4-5", prompt,
-    catalog: LiveRender.StandardCatalog,
-    pid: self()
-  )
-
-  {:noreply, start_live_render(socket)}
-end
-```
-
-`use LiveRender.Live` handles all `{:live_render, ...}` messages and provides `init_live_render/1` / `start_live_render/1`.
-
-### Without any LLM dependency
-
-Bring your own client. Feed the spec map to the renderer directly.
-
-## Spec Format
-
-```json
-{
-  "root": "card-1",
-  "state": {"temperature": 72},
-  "elements": {
-    "card-1": {
-      "type": "card",
-      "props": {"title": "Weather"},
-      "children": ["metric-1"]
-    },
-    "metric-1": {
-      "type": "metric",
-      "props": {"label": "Temperature", "value": {"$state": "/temperature"}},
-      "children": []
-    }
-  }
-}
-```
-
-## Components
-
-Define components with `use LiveRender.Component`:
-
-```elixir
-defmodule MyApp.AI.Components.Metric do
-  use LiveRender.Component,
-    name: "metric",
-    description: "Display a single metric value",
-    schema: [
-      label: [type: :string, required: true, doc: "Metric label"],
-      value: [type: :string, required: true, doc: "Display value"],
-      trend: [type: {:in, [:up, :down, :neutral]}, doc: "Trend direction"]
-    ]
-
-  use Phoenix.Component
-
-  def render(assigns) do
-    ~H"""
-    <div class="flex flex-col">
-      <span class="text-sm text-gray-500"><%= @label %></span>
-      <span class="text-2xl font-bold"><%= @value %></span>
-    </div>
-    """
-  end
-end
-```
-
-Schemas also support [JSONSpec](https://hex.pm/packages/json_spec):
-
-```elixir
-import JSONSpec
-
-use LiveRender.Component,
-  name: "metric",
-  description: "Display a single metric value",
-  schema: schema(
-    %{required(:label) => String.t(), required(:value) => String.t()},
-    doc: [label: "Metric label", value: "Display value"]
-  )
-```
-
-### Built-in components
-
-**Layout:** Stack, Card, Grid, Separator
-**Typography:** Heading, Text
-**Data:** Metric, Badge, Table, Link
-**Interactive:** Button, Tabs, TabContent
-**Rich content:** Callout, Timeline, Accordion, Progress, Alert
-
-## Catalog
+### 1. Define a catalog
 
 ```elixir
 defmodule MyApp.AI.Catalog do
@@ -176,35 +24,205 @@ defmodule MyApp.AI.Catalog do
 
   component LiveRender.Components.Card
   component LiveRender.Components.Metric
-  component MyApp.AI.Components.CustomChart
-
-  action :refresh_data, description: "Refresh all metrics"
+  component LiveRender.Components.Button
 end
-
-MyApp.AI.Catalog.system_prompt()   # LLM system prompt with all component schemas
-MyApp.AI.Catalog.json_schema()     # JSON Schema for structured output mode
 ```
+
+`system_prompt/0` generates an LLM prompt describing every registered component — props, types, descriptions. `json_schema/0` returns a JSON Schema for structured output.
+
+### 2. Render a spec
+
+```heex
+<LiveRender.render
+  spec={@spec}
+  catalog={MyApp.AI.Catalog}
+  streaming={@streaming?}
+/>
+```
+
+**That's it.** AI generates JSON, LiveRender renders it safely through your catalog.
+
+### 3. Connect an LLM
+
+With [ReqLLM](https://hex.pm/packages/req_llm):
+
+```elixir
+defmodule MyAppWeb.DashboardLive do
+  use MyAppWeb, :live_view
+  use LiveRender.Live
+
+  def mount(_params, _session, socket), do: {:ok, init_live_render(socket)}
+
+  def handle_event("generate", %{"prompt" => prompt}, socket) do
+    LiveRender.Generate.stream_spec("anthropic:claude-haiku-4-5", prompt,
+      catalog: MyApp.AI.Catalog,
+      pid: self()
+    )
+
+    {:noreply, start_live_render(socket)}
+  end
+end
+```
+
+`use LiveRender.Live` injects `handle_info` clauses for `:text_chunk`, `:spec`, `:done`, and `:error` messages.
+
+Or with [Jido](https://hex.pm/packages/jido_ai) for full ReAct agent loops with tool calling — see the [example app](example/).
+
+Or bring your own client — anything that produces a spec map works.
+
+## Installation
+
+```elixir
+def deps do
+  [
+    {:live_render, "~> 0.1"}
+  ]
+end
+```
+
+Optional dependencies unlock extra features:
+
+| Dependency | Unlocks |
+|---|---|
+| `{:req_llm, "~> 1.6"}` | `LiveRender.Generate` — streaming/one-shot spec generation |
+| `{:nimble_options, "~> 1.0"}` | Keyword list schema validation with defaults and coercion |
+| `{:json_spec, "~> 1.1"}` | Elixir typespec-style schemas that compile to JSON Schema |
+
+## Spec Format
+
+```json
+{
+  "root": "card-1",
+  "state": { "temperature": 72 },
+  "elements": {
+    "card-1": {
+      "type": "card",
+      "props": { "title": "Weather" },
+      "children": ["metric-1"]
+    },
+    "metric-1": {
+      "type": "metric",
+      "props": {
+        "label": "Temperature",
+        "value": { "$state": "/temperature" }
+      },
+      "children": []
+    }
+  }
+}
+```
+
+Each element has `type` (catalog component name), `props`, `children` (IDs), and optionally `visible` (conditions) and `on` (actions).
+
+## Custom Components
+
+```elixir
+defmodule MyApp.AI.Components.PriceCard do
+  use LiveRender.Component,
+    name: "price_card",
+    description: "Displays a price with currency formatting",
+    schema: [
+      label: [type: :string, required: true, doc: "Item name"],
+      price: [type: :float, required: true, doc: "Price value"],
+      currency: [type: {:in, [:usd, :eur, :gbp]}, default: :usd, doc: "Currency"]
+    ]
+
+  use Phoenix.Component
+
+  def render(assigns) do
+    ~H"""
+    <div class="rounded-lg border p-4">
+      <span class="text-gray-500"><%= @label %></span>
+      <span class="text-2xl font-bold"><%= format(@price, @currency) %></span>
+    </div>
+    """
+  end
+
+  defp format(price, :usd), do: "$#{:erlang.float_to_binary(price, decimals: 2)}"
+  defp format(price, :eur), do: "€#{:erlang.float_to_binary(price, decimals: 2)}"
+  defp format(price, :gbp), do: "£#{:erlang.float_to_binary(price, decimals: 2)}"
+end
+```
+
+Register it:
+
+```elixir
+defmodule MyApp.AI.Catalog do
+  use LiveRender.Catalog
+
+  component MyApp.AI.Components.PriceCard
+  component LiveRender.Components.Card
+  component LiveRender.Components.Stack
+  # ...
+
+  action :add_to_cart, description: "Add an item to the shopping cart"
+end
+```
+
+Schemas support [NimbleOptions](https://hex.pm/packages/nimble_options) keyword lists, [JSONSpec](https://hex.pm/packages/json_spec) maps, or raw JSON Schema.
 
 ## Data Binding
 
-Props reference a state model using expressions:
+Any prop value can be an expression resolved against the spec's `state`:
 
-- `{"$state": "/path/to/value"}` — read from state
-- `{"$cond": {"$state": "/flag"}, "$then": "yes", "$else": "no"}` — conditional
-- `{"$template": "Hello, ${/user/name}!"}` — string interpolation
+```json
+{ "$state": "/user/name" }
+{ "$cond": { "$state": "/loggedIn" }, "$then": "Welcome!", "$else": "Sign in" }
+{ "$template": "Hello, ${/user/name}!" }
+```
 
-## Streaming
+## Visibility Conditions
 
-Stable elements get `phx-update="ignore"` so LiveView skips them — only the actively streaming element re-renders per chunk.
+```json
+{
+  "type": "alert",
+  "props": { "message": "Error occurred" },
+  "visible": { "$state": "/hasError" }
+}
+```
+
+Supports equality checks (`"eq"`), negation (`"not"`), and arrays (all must be truthy).
+
+## Built-in Components
+
+| Category | Components |
+|---|---|
+| **Layout** | Stack, Card, Grid, Separator |
+| **Typography** | Heading, Text |
+| **Data** | Metric, Badge, Table, Link |
+| **Interactive** | Button, Tabs, TabContent |
+| **Rich** | Callout, Timeline, Accordion, Progress, Alert |
+
+Use them directly with `LiveRender.StandardCatalog`, or pick individual ones for your own catalog.
+
+## Tools
+
+With ReqLLM:
+
+```elixir
+LiveRender.Generate.stream_spec(model, prompt,
+  catalog: MyApp.AI.Catalog,
+  pid: self(),
+  tools: [
+    LiveRender.Tool.new!(
+      name: "get_weather",
+      description: "Get current weather",
+      parameter_schema: [location: [type: :string, required: true, doc: "City"]],
+      callback: &MyApp.Weather.fetch/1
+    )
+  ]
+)
+```
+
+With Jido, define tools as `Jido.Action` modules for a full ReAct agent loop.
 
 ## Example App
 
-The [example/](example/) directory contains a full chat application porting Vercel's json-render chat example to Phoenix LiveView:
+The [`example/`](example/) directory contains a chat application porting Vercel's json-render chat example:
 
-- **Tools** as `Jido.Action` modules: weather (Open-Meteo), crypto (CoinGecko), GitHub, Hacker News
-- **Agent** using `Jido.AI.Reasoning.ReAct.stream/3` for the tool loop
-- **PhoenixStreamdown** for streaming markdown text
-- **LiveRender** for AI-generated dashboard specs
+- Tools: weather, crypto, GitHub, Hacker News
+- Jido ReAct agent with streaming
+- PhoenixStreamdown for streaming markdown
 
 ```bash
 cd example
@@ -221,4 +239,4 @@ mix ci  # compile, format, credo, dialyzer, ex_dna, test
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
