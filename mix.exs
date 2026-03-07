@@ -36,6 +36,7 @@ defmodule LiveRender.MixProject do
       {:jason, "~> 1.4"},
       {:json_spec, "~> 1.1", optional: true},
       {:nimble_options, "~> 1.0", optional: true},
+      {:req_llm, "~> 1.6", optional: true},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end

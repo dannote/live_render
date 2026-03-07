@@ -8,17 +8,93 @@ AI generates a JSON spec → LiveView resolves it to function components server-
 
 ```elixir
 def deps do
-  [{:live_render, "~> 0.1"}]
+  [
+    {:live_render, "~> 0.1"},
+    {:req_llm, "~> 1.6"}     # optional — for LLM integration
+  ]
 end
 ```
 
 ## Quick Start
 
+### With ReqLLM (recommended)
+
+```elixir
+defmodule MyAppWeb.DashboardLive do
+  use MyAppWeb, :live_view
+  use LiveRender.Live
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, init_live_render(socket)}
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <form phx-submit="generate">
+      <input type="text" name="prompt" placeholder="Describe a dashboard..." />
+      <button type="submit">Generate</button>
+    </form>
+
+    <div :if={@lr_text != ""} class="prose"><%= @lr_text %></div>
+
+    <LiveRender.render
+      :if={@lr_spec != %{}}
+      spec={@lr_spec}
+      catalog={LiveRender.StandardCatalog}
+      streaming={@lr_streaming?}
+    />
+    """
+  end
+
+  @impl true
+  def handle_event("generate", %{"prompt" => prompt}, socket) do
+    LiveRender.Generate.stream_spec("anthropic:claude-haiku-4-5", prompt,
+      catalog: LiveRender.StandardCatalog,
+      pid: self()
+    )
+
+    {:noreply, start_live_render(socket)}
+  end
+end
+```
+
+`use LiveRender.Live` sets up `handle_info` clauses for all `{:live_render, ...}` messages
+and provides `init_live_render/1` / `start_live_render/1` helpers.
+
+### With tools
+
+```elixir
+tools = [
+  LiveRender.Tool.new!(
+    name: "get_weather",
+    description: "Get current weather for a location",
+    parameter_schema: [
+      location: [type: :string, required: true, doc: "City name"]
+    ],
+    callback: fn args -> {:ok, Weather.fetch(args[:location])} end
+  )
+]
+
+LiveRender.Generate.stream_spec("anthropic:claude-haiku-4-5", prompt,
+  catalog: MyApp.AI.Catalog,
+  pid: self(),
+  tools: tools
+)
+```
+
+`LiveRender.Tool` delegates to `ReqLLM.Tool` — all schema formats work: NimbleOptions keyword lists, JSONSpec maps, or raw JSON Schema.
+
+### Without ReqLLM
+
+Bring your own LLM client. Feed the spec map to the renderer:
+
 ```heex
 <LiveRender.render spec={@spec} catalog={LiveRender.StandardCatalog} streaming={@streaming?} />
 ```
 
-The spec is a JSON map:
+## Spec Format
 
 ```json
 {
@@ -93,11 +169,15 @@ defmodule MyApp.AI.Catalog do
 end
 ```
 
-Generate an LLM system prompt from your catalog:
+Generate a system prompt from your catalog:
 
 ```elixir
 MyApp.AI.Catalog.system_prompt()
 ```
+
+The prompt describes all registered components with their props, types, and
+descriptions — ready to embed in an LLM call. `json_schema/0` returns a
+JSON Schema for structured output mode.
 
 ## Data Binding
 
@@ -111,12 +191,7 @@ Props can reference a state model using expressions:
 
 During LLM streaming, stable elements get `phx-update="ignore"` so LiveView skips them — only the last element re-renders per chunk.
 
-```elixir
-def handle_info({:spec_chunk, chunk}, socket) do
-  spec = deep_merge(socket.assigns.spec, chunk)
-  {:noreply, assign(socket, spec: spec)}
-end
-```
+When using `LiveRender.Generate`, text chunks arrive as `{:live_render, :text_chunk, token}` and the final parsed spec arrives as `{:live_render, :spec, spec}`. Use `LiveRender.Live` to handle these automatically, or pattern-match them yourself.
 
 ## Built-in Components
 
