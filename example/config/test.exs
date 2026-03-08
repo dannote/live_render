@@ -5,7 +5,9 @@ import Config
 config :example, ExampleWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "04eWovO9GTCBWxR3BV5PRle6jLidKQGP+dxMAvhEJgQ3ve+smu3sozjVTRy0F5Nw",
-  server: false
+  server: true
+
+config :phoenix_test, otp_app: :example
 
 # Print only warnings and errors during test
 config :logger, level: :warning

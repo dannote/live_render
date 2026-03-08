@@ -7,6 +7,7 @@ defmodule LiveRender.StateResolver do
   - `{"$bindState": "/path"}` — two-way binding (read value, renderer generates phx-change)
   - `{"$cond": ..., "$then": ..., "$else": ...}` — conditional prop values
   - `{"$template": "Hello, ${/user/name}!"}` — string interpolation
+  - `{"$concat": ["Humidity: ", {"$state": "/humidity"}, "%"]}` — concatenate resolved parts into a string
   """
 
   @doc """
@@ -78,6 +79,12 @@ defmodule LiveRender.StateResolver do
 
   defp do_resolve(%{"$cond" => condition, "$then" => then_val}, state) do
     if evaluate_condition(condition, state), do: do_resolve(then_val, state)
+  end
+
+  defp do_resolve(%{"$concat" => parts}, state) when is_list(parts) do
+    parts
+    |> Enum.map(&do_resolve(&1, state))
+    |> Enum.map_join(&to_string/1)
   end
 
   defp do_resolve(%{"$template" => template}, state) do

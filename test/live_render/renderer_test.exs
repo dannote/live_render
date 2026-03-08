@@ -189,5 +189,207 @@ defmodule LiveRender.RendererTest do
       assert html =~ "Active"
       assert html =~ "green"
     end
+
+    test "renders $concat expressions as strings" do
+      spec = %{
+        "root" => "t1",
+        "state" => %{"humidity" => 65},
+        "elements" => %{
+          "t1" => %{
+            "type" => "text",
+            "props" => %{
+              "content" => %{
+                "$concat" => ["Humidity: ", %{"$state" => "/humidity"}, "%"]
+              }
+            },
+            "children" => []
+          }
+        }
+      }
+
+      html = render_spec(spec)
+      assert html =~ "Humidity: 65%"
+    end
+
+    test "survives $state refs pointing at nil" do
+      spec = %{
+        "root" => "stack-1",
+        "state" => %{"cities" => %{"London" => nil}},
+        "elements" => %{
+          "stack-1" => %{
+            "type" => "stack",
+            "props" => %{"direction" => "vertical"},
+            "children" => ["text-1", "metric-1"]
+          },
+          "text-1" => %{
+            "type" => "text",
+            "props" => %{"content" => %{"$state" => "/cities/London/conditions"}},
+            "children" => []
+          },
+          "metric-1" => %{
+            "type" => "metric",
+            "props" => %{
+              "label" => "Temperature",
+              "value" => %{"$state" => "/cities/London/temp"},
+              "detail" => "°C"
+            },
+            "children" => []
+          }
+        }
+      }
+
+      html = render_spec(spec)
+      assert html =~ "Temperature"
+      assert html =~ "°C"
+    end
+
+    test "renders slot components with no children (partial streaming spec)" do
+      spec = %{
+        "root" => "root",
+        "elements" => %{
+          "root" => %{"type" => "stack", "props" => %{}}
+        }
+      }
+
+      html = render_spec(spec)
+      assert html =~ "flex"
+    end
+
+    test "renders slot components as children arrive incrementally" do
+      partial = %{
+        "root" => "root",
+        "elements" => %{
+          "root" => %{"type" => "card", "props" => %{"title" => "Weather"}, "children" => ["h1"]},
+          "h1" => %{"type" => "heading", "props" => %{"text" => "Hello"}}
+        }
+      }
+
+      html = render_spec(partial)
+      assert html =~ "Weather"
+      assert html =~ "Hello"
+
+      with_more = put_in(partial["elements"]["m1"], %{
+        "type" => "metric",
+        "props" => %{"label" => "Temp", "value" => "72°F"}
+      })
+
+      with_more = put_in(with_more["elements"]["root"]["children"], ["h1", "m1"])
+
+      html2 = render_spec(with_more)
+      assert html2 =~ "72°F"
+    end
+
+    test "renders table with nil $state data without crashing" do
+      spec = %{
+        "root" => "t",
+        "state" => %{},
+        "elements" => %{
+          "t" => %{
+            "type" => "table",
+            "props" => %{
+              "columns" => [%{"key" => "name", "label" => "Name"}],
+              "data" => %{"$state" => "/items"}
+            }
+          }
+        }
+      }
+
+      html = render_spec(spec)
+      assert html =~ "No data"
+    end
+
+    test "renders grid with no children" do
+      spec = %{
+        "root" => "g",
+        "elements" => %{
+          "g" => %{"type" => "grid", "props" => %{"columns" => 3}}
+        }
+      }
+
+      html = render_spec(spec)
+      assert html =~ "grid"
+    end
+
+    test "renders full weather comparison spec without crashing" do
+      spec = %{
+        "root" => "root",
+        "state" => %{
+          "cities" => %{
+            "New York" => %{"temp" => 72, "condition" => "Sunny", "humidity" => 65, "wind" => 8},
+            "London" => %{"temp" => 15, "condition" => "Rain", "humidity" => 80, "wind" => 12}
+          }
+        },
+        "elements" => %{
+          "root" => %{
+            "type" => "stack",
+            "props" => %{"direction" => "vertical"},
+            "children" => ["heading", "grid"]
+          },
+          "heading" => %{
+            "type" => "heading",
+            "props" => %{"text" => "Weather Comparison", "level" => "h2"},
+            "children" => []
+          },
+          "grid" => %{
+            "type" => "grid",
+            "props" => %{"columns" => 2},
+            "children" => ["ny-card", "london-card"]
+          },
+          "ny-card" => %{
+            "type" => "card",
+            "props" => %{"title" => "New York"},
+            "children" => ["ny-temp", "ny-humidity"]
+          },
+          "ny-temp" => %{
+            "type" => "metric",
+            "props" => %{
+              "label" => "Temperature",
+              "value" => %{"$state" => "/cities/New York/temp"},
+              "detail" => "°F"
+            },
+            "children" => []
+          },
+          "ny-humidity" => %{
+            "type" => "text",
+            "props" => %{
+              "content" => %{
+                "$concat" => ["Humidity: ", %{"$state" => "/cities/New York/humidity"}, "%"]
+              }
+            },
+            "children" => []
+          },
+          "london-card" => %{
+            "type" => "card",
+            "props" => %{"title" => "London"},
+            "children" => ["london-temp", "london-humidity"]
+          },
+          "london-temp" => %{
+            "type" => "metric",
+            "props" => %{
+              "label" => "Temperature",
+              "value" => %{"$state" => "/cities/London/temp"},
+              "detail" => "°C"
+            },
+            "children" => []
+          },
+          "london-humidity" => %{
+            "type" => "text",
+            "props" => %{
+              "content" => %{
+                "$concat" => ["Humidity: ", %{"$state" => "/cities/London/humidity"}, "%"]
+              }
+            },
+            "children" => []
+          }
+        }
+      }
+
+      html = render_spec(spec)
+      assert html =~ "Weather Comparison"
+      assert html =~ "New York"
+      assert html =~ "London"
+      assert html =~ "Humidity: 65%"
+      assert html =~ "Humidity: 80%"
+    end
   end
 end

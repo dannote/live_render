@@ -18,24 +18,24 @@ defmodule LiveRender.Components.Callout do
     ~H"""
     <div class={["border-l-4 rounded-r-lg p-4", callout_class(@type)]}>
       <div class="flex items-start gap-3">
-        <span class="text-lg"><%= callout_icon(@type) %></span>
+        <span class="text-lg shrink-0"><%= callout_icon(@type) %></span>
         <div>
           <p :if={@title} class="font-semibold text-sm mb-1"><%= @title %></p>
-          <p class="text-sm text-gray-600 dark:text-gray-400"><%= @content %></p>
+          <p class="text-sm text-muted-foreground"><%= @content %></p>
         </div>
       </div>
     </div>
     """
   end
 
-  defp callout_class(:info), do: "border-blue-500 bg-blue-50 dark:bg-blue-900/10"
-  defp callout_class(:tip), do: "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10"
-  defp callout_class(:warning), do: "border-amber-500 bg-amber-50 dark:bg-amber-900/10"
-  defp callout_class(:important), do: "border-purple-500 bg-purple-50 dark:bg-purple-900/10"
+  defp callout_class(:info), do: "border-blue-500 bg-blue-50 dark:bg-blue-950/50"
+  defp callout_class(:tip), do: "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50"
+  defp callout_class(:warning), do: "border-amber-500 bg-amber-50 dark:bg-amber-950/50"
+  defp callout_class(:important), do: "border-purple-500 bg-purple-50 dark:bg-purple-950/50"
 
-  defp callout_icon(:info), do: "ℹ"
+  defp callout_icon(:info), do: "ℹ️"
   defp callout_icon(:tip), do: "💡"
-  defp callout_icon(:warning), do: "⚠"
+  defp callout_icon(:warning), do: "⚠️"
   defp callout_icon(:important), do: "⭐"
 end
 
@@ -57,19 +57,19 @@ defmodule LiveRender.Components.Timeline do
   def render(assigns) do
     ~H"""
     <div class="relative pl-8">
-      <div class="absolute left-[5.5px] top-3 bottom-3 w-px bg-gray-200 dark:bg-gray-700" />
+      <div class="absolute left-[5.5px] top-3 bottom-3 w-px bg-border" />
       <div class="flex flex-col gap-6">
         <div :for={item <- @items} class="relative">
-          <div class={["absolute -left-8 top-0.5 h-3 w-3 rounded-full ring-2 ring-white dark:ring-gray-900", dot_class(item["status"])]}>
+          <div class={["absolute -left-8 top-0.5 h-3 w-3 rounded-full ring-2 ring-background", dot_class(item["status"])]}>
           </div>
           <div>
             <div class="flex items-center gap-2 flex-wrap">
               <p class="font-medium text-sm"><%= item["title"] %></p>
-              <span :if={item["date"]} class="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+              <span :if={item["date"]} class="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                 <%= item["date"] %>
               </span>
             </div>
-            <p :if={item["description"]} class="text-sm text-gray-500 mt-1">
+            <p :if={item["description"]} class="text-sm text-muted-foreground mt-1">
               <%= item["description"] %>
             </p>
           </div>
@@ -81,8 +81,8 @@ defmodule LiveRender.Components.Timeline do
 
   defp dot_class("completed"), do: "bg-emerald-500"
   defp dot_class("current"), do: "bg-blue-500"
-  defp dot_class("upcoming"), do: "bg-gray-300 dark:bg-gray-600"
-  defp dot_class(_), do: "bg-gray-400"
+  defp dot_class("upcoming"), do: "bg-muted-foreground/30"
+  defp dot_class(_), do: "bg-muted-foreground"
 end
 
 defmodule LiveRender.Components.Accordion do
@@ -101,13 +101,13 @@ defmodule LiveRender.Components.Accordion do
 
   def render(assigns) do
     ~H"""
-    <div class="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
-      <details :for={item <- @items} class="group">
-        <summary class="flex items-center justify-between px-4 py-3 cursor-pointer text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800/50">
+    <div class="w-full">
+      <details :for={item <- @items} class="group border-b border-border">
+        <summary class="flex items-center justify-between py-4 cursor-pointer text-sm font-medium hover:underline [&::-webkit-details-marker]:hidden">
           <%= item["title"] %>
-          <span class="text-gray-400 group-open:rotate-180 transition-transform">▾</span>
+          <span class="text-muted-foreground group-open:rotate-180 transition-transform text-xs">▼</span>
         </summary>
-        <div class="px-4 pb-3 text-sm text-gray-600 dark:text-gray-400">
+        <div class="pb-4 text-sm text-muted-foreground">
           <%= item["content"] %>
         </div>
       </details>
@@ -122,35 +122,25 @@ defmodule LiveRender.Components.Progress do
     description: "Progress bar",
     schema: [
       value: [type: :integer, required: true, doc: "Current value (0-100)"],
-      label: [type: :string, doc: "Label text"],
-      color: [
-        type: {:in, [:default, :success, :warning, :error]},
-        default: :default,
-        doc: "Bar color"
-      ]
+      label: [type: :string, doc: "Label text"]
     ]
 
   use Phoenix.Component
 
   def render(assigns) do
     ~H"""
-    <div>
-      <div :if={@label} class="flex justify-between text-sm mb-1">
-        <span><%= @label %></span>
-        <span class="text-gray-500"><%= @value %>%</span>
+    <div class="space-y-2">
+      <div :if={@label} class="flex justify-between text-sm">
+        <span class="text-muted-foreground"><%= @label %></span>
+        <span class="text-muted-foreground"><%= @value %>%</span>
       </div>
-      <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-        <div class={["h-2 rounded-full transition-all", bar_color(@color)]} style={"width: #{min(max(@value, 0), 100)}%"}>
+      <div class="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+        <div class="h-full bg-primary transition-all" style={"width: #{min(max(@value, 0), 100)}%"}>
         </div>
       </div>
     </div>
     """
   end
-
-  defp bar_color(:success), do: "bg-emerald-500"
-  defp bar_color(:warning), do: "bg-amber-500"
-  defp bar_color(:error), do: "bg-red-500"
-  defp bar_color(_), do: "bg-blue-600"
 end
 
 defmodule LiveRender.Components.Alert do
@@ -158,6 +148,7 @@ defmodule LiveRender.Components.Alert do
     name: "alert",
     description: "Alert message",
     schema: [
+      title: [type: :string, doc: "Alert title"],
       message: [type: :string, required: true, doc: "Alert message"],
       variant: [
         type: {:in, [:info, :success, :warning, :error]},
@@ -169,19 +160,25 @@ defmodule LiveRender.Components.Alert do
   use Phoenix.Component
 
   def render(assigns) do
+    assigns = assign_new(assigns, :title, fn -> nil end)
+
     ~H"""
-    <div class={["px-4 py-3 rounded-lg text-sm", alert_class(@variant)]}>
-      <%= @message %>
+    <div role="alert" class={["relative w-full rounded-lg border p-4 text-sm", alert_class(@variant)]}>
+      <h5 :if={@title} class="mb-1 font-medium leading-none tracking-tight"><%= @title %></h5>
+      <div class="text-sm [&_p]:leading-relaxed"><%= @message %></div>
     </div>
     """
   end
 
   defp alert_class(:success),
-    do: "bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400"
+    do: "border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-100"
 
   defp alert_class(:warning),
-    do: "bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400"
+    do: "border-yellow-200 bg-yellow-50 text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-100"
 
-  defp alert_class(:error), do: "bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-  defp alert_class(_), do: "bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
+  defp alert_class(:error),
+    do: "border-destructive/50 bg-destructive/10 text-destructive"
+
+  defp alert_class(_),
+    do: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100"
 end

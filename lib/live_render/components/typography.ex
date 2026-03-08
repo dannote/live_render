@@ -17,10 +17,10 @@ defmodule LiveRender.Components.Heading do
     """
   end
 
-  defp heading_class(:h1), do: "text-2xl font-bold"
-  defp heading_class(:h2), do: "text-xl font-semibold"
-  defp heading_class(:h3), do: "text-lg font-semibold"
-  defp heading_class(:h4), do: "text-base font-medium"
+  defp heading_class(:h1), do: "text-2xl font-bold text-left"
+  defp heading_class(:h2), do: "text-lg font-semibold text-left"
+  defp heading_class(:h3), do: "text-base font-semibold text-left"
+  defp heading_class(:h4), do: "text-sm font-semibold text-left"
 end
 
 defmodule LiveRender.Components.Text do
@@ -28,17 +28,33 @@ defmodule LiveRender.Components.Text do
     name: "text",
     description: "Text content",
     schema: [
-      content: [type: :string, required: true, doc: "Text content"],
-      muted: [type: :boolean, default: false, doc: "Use muted/secondary color"]
+      text: [type: :string, doc: "Text content"],
+      content: [type: :string, doc: "Text content (alias for text)"],
+      variant: [
+        type: {:in, [:default, :muted, :caption, :lead, :code]},
+        default: :default,
+        doc: "Text variant"
+      ]
     ]
 
   use Phoenix.Component
 
   def render(assigns) do
+    text = assigns[:text] || assigns[:content] || ""
+    assigns = assign(assigns, :display_text, text)
+
     ~H"""
-    <p class={if @muted, do: "text-gray-500 dark:text-gray-400", else: ""}>
-      <%= @content %>
+    <code :if={@variant == :code} class="font-mono text-sm bg-muted px-1.5 py-0.5 rounded text-left">
+      <%= @display_text %>
+    </code>
+    <p :if={@variant != :code} class={text_class(@variant)}>
+      <%= @display_text %>
     </p>
     """
   end
+
+  defp text_class(:caption), do: "text-xs text-left"
+  defp text_class(:muted), do: "text-sm text-muted-foreground text-left"
+  defp text_class(:lead), do: "text-xl text-muted-foreground text-left"
+  defp text_class(_), do: "text-sm text-left"
 end

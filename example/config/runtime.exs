@@ -20,8 +20,28 @@ if System.get_env("PHX_SERVER") do
   config :example, ExampleWeb.Endpoint, server: true
 end
 
-config :example, ExampleWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+if config_env() != :test do
+  config :example, ExampleWeb.Endpoint,
+    http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+end
+
+import Dotenvy
+
+env_file = Path.expand("../.env", __DIR__)
+
+if File.exists?(env_file) do
+  Dotenvy.source!([env_file, System.get_env()])
+end
+
+if model = env!("MODEL", :string, nil) do
+  config :example, :model, model
+
+  config :jido_ai,
+    model_aliases: %{
+      fast: model,
+      capable: model
+    }
+end
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

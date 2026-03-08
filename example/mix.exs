@@ -50,6 +50,9 @@ defmodule Example.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.1.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
+      {:phoenix_test, "~> 0.10", only: :test, runtime: false},
+      {:phoenix_test_playwright, "~> 0.13", only: :test, runtime: false},
+      {:nimble_options, github: "dashbitco/nimble_options", override: true},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
       {:heroicons,
@@ -63,7 +66,10 @@ defmodule Example.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      # Override until req_llm > 1.6.0 is released with agentjido/req_llm#437
+      # (OpenRouter provider crashes on atom tool_choice, omitting tools from requests)
+      {:req_llm, github: "agentjido/req_llm", override: true}
     ]
   end
 

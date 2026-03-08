@@ -12,25 +12,24 @@
     </script>
     <script>
       (() => {
-        const setTheme = (theme) => {
-          if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.removeAttribute("data-theme");
-          } else {
-            localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
-          }
+        const apply = (pref) => {
+          const dark = pref === "dark" || (!pref && matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
         };
-        if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
-        }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+        apply(localStorage.getItem("theme"));
+        matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+          if (!localStorage.getItem("theme")) apply();
+        });
+        window.addEventListener("phx:toggle-theme", () => {
+          const isDark = document.documentElement.classList.contains("dark");
+          const next = isDark ? "light" : "dark";
+          localStorage.setItem("theme", next);
+          apply(next);
+        });
       })();
     </script>
   </head>
-  <body>
+  <body class="bg-background text-foreground antialiased">
     {@inner_content}
   </body>
 </html>

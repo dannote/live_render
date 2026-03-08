@@ -43,14 +43,13 @@ defmodule LiveRender do
 
     state = (assigns.spec && assigns.spec["state"]) || %{}
     root = assigns.spec && assigns.spec["root"]
-
     assigns =
       assigns
       |> assign(:state, state)
       |> assign(:root, root)
 
     ~H"""
-    <div id={@id} class={@class}>
+    <div id={@id} data-live-render-id={@id} class={@class}>
       <.render_node
         :if={@root}
         spec={@spec}
@@ -86,7 +85,11 @@ defmodule LiveRender do
         id={"#{@prefix}-#{@node_id}"}
         phx-update={if @freeze?, do: "ignore"}
       >
-        <%= @component_mod.render(Map.put(@component_assigns, :__changed__, %{})) %>
+        <%= if @streaming do %>
+          <%= @component_mod.render(Map.put(@component_assigns, :__changed__, %{inner_block: true})) %>
+        <% else %>
+          <%= @component_mod.render(Map.put(@component_assigns, :__changed__, %{})) %>
+        <% end %>
         <%= unless @has_children? and @has_slots? do %>
           <.render_node
             :for={child_id <- @children}
@@ -115,10 +118,15 @@ defmodule LiveRender do
     has_slots? = component_mod.component_slots() != []
 
     component_assigns =
-      if has_children? and has_slots? do
-        Map.put(validated_props, :inner_block, build_inner_block(assigns, children))
-      else
-        validated_props
+      cond do
+        has_children? and has_slots? ->
+          Map.put(validated_props, :inner_block, build_inner_block(assigns, children))
+
+        has_slots? ->
+          Map.put(validated_props, :inner_block, [])
+
+        true ->
+          validated_props
       end
 
     assigns
@@ -127,10 +135,7 @@ defmodule LiveRender do
     |> assign(:children, children)
     |> assign(:has_children?, has_children?)
     |> assign(:has_slots?, has_slots?)
-    |> assign(
-      :freeze?,
-      not assigns.streaming or not last_active_node?(assigns.spec, assigns.node_id)
-    )
+    |> assign(:freeze?, not assigns.streaming)
     |> assign(:component_mod, component_mod)
     |> assign(:component_assigns, component_assigns)
   end
@@ -140,8 +145,12 @@ defmodule LiveRender do
     resolved = StateResolver.resolve(raw_props, state)
 
     case component_mod.validate_props(resolved) do
-      {:ok, props} -> props
-      {:error, _} -> atomize_keys(resolved)
+      {:ok, props} ->
+        props
+
+      {:error, _} ->
+        atomize_keys(resolved)
+        |> apply_schema_defaults(component_mod.component_schema())
     end
   end
 
@@ -199,24 +208,18 @@ defmodule LiveRender do
 
   # --- Helpers ---
 
-  defp last_active_node?(spec, node_id) do
-    elements = spec["elements"] || %{}
-    root = spec["root"]
-
-    find_last_leaf(elements, root) == node_id
-  end
-
-  defp find_last_leaf(elements, id) do
-    case elements[id] do
-      %{"children" => [_ | _] = children} -> find_last_leaf(elements, List.last(children))
-      _ -> id
-    end
-  end
-
   defp atomize_keys(map) when is_map(map) do
     Map.new(map, fn
       {key, val} when is_binary(key) -> {String.to_atom(key), val}
       {key, val} -> {key, val}
     end)
   end
+
+  defp apply_schema_defaults(props, schema) when is_list(schema) do
+    Enum.reduce(schema, props, fn {key, spec}, acc ->
+      if Map.has_key?(acc, key), do: acc, else: Map.put(acc, key, spec[:default])
+    end)
+  end
+
+  defp apply_schema_defaults(props, _schema), do: props
 end

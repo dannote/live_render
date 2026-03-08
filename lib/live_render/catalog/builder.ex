@@ -61,18 +61,55 @@ defmodule LiveRender.Catalog.Builder do
         "\n## Rules\n\n#{rules}\n"
       end
 
+    mode = Keyword.get(opts, :mode, :object)
+
+    format_section =
+      case mode do
+        :patch ->
+          """
+          ## Spec format (JSONL, RFC 6902 JSON Patch)
+
+          Output JSONL patch operations inside a ```spec fence — one JSON object per line.
+          Each line is a patch: {"op":"add","path":"/...","value":...}
+
+          Start with /root, then interleave /elements and /state patches so the UI fills in
+          progressively as it streams. Output state patches right after the elements that use them.
+
+          Example (each line is a separate JSON object):
+          ```spec
+          {"op":"add","path":"/root","value":"main"}
+          {"op":"add","path":"/elements/main","value":{"type":"stack","props":{},"children":["heading","card-1"]}}
+          {"op":"add","path":"/elements/heading","value":{"type":"heading","props":{"text":"Dashboard"},"children":[]}}
+          {"op":"add","path":"/elements/card-1","value":{"type":"card","props":{"title":"Stats"},"children":["metric-1"]}}
+          {"op":"add","path":"/elements/metric-1","value":{"type":"metric","props":{"label":"Users","value":{"$state":"/users"}},"children":[]}}
+          {"op":"add","path":"/state/users","value":"1,234"}
+          ```
+
+          For state arrays, stream one item at a time:
+          {"op":"add","path":"/state/items","value":[]}
+          {"op":"add","path":"/state/items/-","value":{"id":"1","name":"First"}}
+          {"op":"add","path":"/state/items/-","value":{"id":"2","name":"Second"}}
+
+          Supported ops: add, replace, remove.
+          """
+
+        :object ->
+          """
+          ## Spec format
+
+          Output a JSON object with:
+          - "root": string ID of the root element
+          - "state": object with initial state values (optional)
+          - "elements": object mapping element IDs to element definitions
+
+          Each element: {"type": "component_name", "props": {...}, "children": ["child-id", ...]}
+          """
+      end
+
     """
     You generate UI specs as JSON. Use ONLY these components and actions.
 
-    ## Spec format
-
-    Output a JSON object with:
-    - "root": string ID of the root element
-    - "state": object with initial state values (optional)
-    - "elements": object mapping element IDs to element definitions
-
-    Each element: {"type": "component_name", "props": {...}, "children": ["child-id", ...]}
-
+    #{format_section}
     ## Data binding
 
     Any prop value can reference the state model:

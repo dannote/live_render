@@ -113,6 +113,28 @@ defmodule LiveRender.StateResolverTest do
       assert result == [1, 2]
     end
 
+    test "resolves $concat" do
+      state = %{"humidity" => 65}
+
+      result =
+        StateResolver.resolve(
+          %{"$concat" => ["Humidity: ", %{"$state" => "/humidity"}, "%"]},
+          state
+        )
+
+      assert result == "Humidity: 65%"
+    end
+
+    test "resolves $concat with nil values" do
+      result =
+        StateResolver.resolve(
+          %{"$concat" => ["Value: ", %{"$state" => "/missing"}]},
+          %{}
+        )
+
+      assert result == "Value: "
+    end
+
     test "passes through plain values" do
       assert StateResolver.resolve("hello", %{}) == "hello"
       assert StateResolver.resolve(42, %{}) == 42

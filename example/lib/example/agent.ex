@@ -8,6 +8,10 @@ defmodule Example.Agent do
 
   @default_model "anthropic:claude-haiku-4-5"
 
+  defp default_model do
+    Application.get_env(:example, :model, @default_model)
+  end
+
   @tools [
     Example.Tools.Weather,
     Example.Tools.CryptoPrice,
@@ -24,7 +28,7 @@ defmodule Example.Agent do
     "For educational prompts ('teach me about', 'explain', 'what is'), use a mix of Callout, Accordion, Timeline to make the content visually rich."
   ]
 
-  @spec_fence_regex ~r/```spec\n([\s\S]*?)(?:```|$)/
+
 
   @doc """
   Starts a streamed conversation with the ReAct agent.
@@ -38,7 +42,7 @@ defmodule Example.Agent do
   - `{:live_render, :error, reason}` — failure
   """
   def chat(prompt, pid, opts \\ []) do
-    model = Keyword.get(opts, :model, @default_model)
+    model = Keyword.get(opts, :model, default_model())
 
     Task.start(fn ->
       config = %{
@@ -52,65 +56,39 @@ defmodule Example.Agent do
       }
 
       try do
-        text =
-          Jido.AI.Reasoning.ReAct.stream(prompt, config)
-          |> Enum.reduce("", fn event, text_acc ->
-            case event.kind do
-              :llm_delta ->
-                delta = get_in(event.data, [:delta]) || ""
+        initial_acc = %{
+          line_buf: "",
+          last_tool_iter: nil,
+          in_fence: false,
+          spec: %{"root" => nil, "elements" => %{}, "state" => %{}}
+        }
 
-                if delta != "" do
-                  send(pid, {:live_render, :text_chunk, delta})
-                end
+        Jido.AI.Reasoning.ReAct.stream(prompt, config)
+        |> Enum.reduce(initial_acc, fn event, acc ->
+          case event.kind do
+            :llm_delta ->
+              delta = get_in(event.data, [:delta]) || ""
+              if delta == "", do: acc, else: process_delta(delta, acc, pid)
 
-                text_acc <> delta
+            :tool_started ->
+              name = event.tool_name || event.data[:tool_name] || "unknown"
+              send(pid, {:live_render, :tool_start, name})
+              %{acc | last_tool_iter: event.iteration, line_buf: "", in_fence: false}
 
-              :tool_started ->
-                name = event.tool_name || event.data[:tool_name] || "unknown"
-                send(pid, {:live_render, :tool_start, name})
-                text_acc
+            :tool_completed ->
+              name = event.tool_name || event.data[:tool_name] || "unknown"
+              send(pid, {:live_render, :tool_done, name, event.data[:result]})
+              %{acc | last_tool_iter: event.iteration}
 
-              :tool_completed ->
-                name = event.tool_name || event.data[:tool_name] || "unknown"
-                result = event.data[:result]
-                send(pid, {:live_render, :tool_done, name, result})
-                text_acc
+            :request_failed ->
+              send(pid, {:live_render, :error, event.data[:error] || "Unknown error"})
+              acc
 
-              :llm_completed ->
-                result_text = get_in(event.data, [:result]) || ""
+            _ ->
+              acc
+          end
+        end)
 
-                if result_text != "" and text_acc == "" do
-                  send(pid, {:live_render, :text_chunk, result_text})
-                  result_text
-                else
-                  text_acc
-                end
-
-              :request_completed ->
-                result_text = get_in(event.data, [:result]) || ""
-
-                final_text =
-                  if result_text != "" and text_acc == "" do
-                    send(pid, {:live_render, :text_chunk, result_text})
-                    result_text
-                  else
-                    text_acc
-                  end
-
-                maybe_send_spec(final_text, pid)
-                final_text
-
-              :request_failed ->
-                error = event.data[:error] || "Unknown error"
-                send(pid, {:live_render, :error, error})
-                text_acc
-
-              _ ->
-                text_acc
-            end
-          end)
-
-        maybe_send_spec(text, pid)
         send(pid, {:live_render, :done})
       rescue
         e ->
@@ -119,34 +97,52 @@ defmodule Example.Agent do
     end)
   end
 
-  defp maybe_send_spec(text, pid) do
-    case Regex.run(@spec_fence_regex, text) do
-      [_, json] ->
-        case Jason.decode(String.trim(json)) do
-          {:ok, %{"root" => _, "elements" => _} = spec} ->
-            send(pid, {:live_render, :spec, spec})
+  defp process_delta(delta, acc, pid) do
+    buf = acc.line_buf <> delta
 
-          _ ->
-            :ok
+    {lines, remainder} = split_lines(buf)
+
+    acc = Enum.reduce(lines, %{acc | line_buf: ""}, fn line, acc ->
+      process_line(line, acc, pid)
+    end)
+
+    %{acc | line_buf: remainder}
+  end
+
+  defp split_lines(buf) do
+    parts = String.split(buf, "\n", parts: :infinity)
+    {remainder, complete} = List.pop_at(parts, -1)
+    {complete, remainder}
+  end
+
+  defp process_line(line, acc, pid) do
+    trimmed = String.trim(line)
+
+    cond do
+      not acc.in_fence and String.starts_with?(trimmed, "```spec") ->
+        %{acc | in_fence: true}
+
+      acc.in_fence and trimmed == "```" ->
+        %{acc | in_fence: false}
+
+      acc.in_fence ->
+        case LiveRender.SpecPatch.parse_and_apply(acc.spec, trimmed) do
+          {:ok, new_spec} ->
+            send(pid, {:live_render, :spec, new_spec})
+            %{acc | spec: new_spec}
+
+          :skip ->
+            acc
         end
 
-      nil ->
-        trimmed = String.trim(text)
-
-        if String.starts_with?(trimmed, "{") do
-          case Jason.decode(trimmed) do
-            {:ok, %{"root" => _, "elements" => _} = spec} ->
-              send(pid, {:live_render, :spec, spec})
-
-            _ ->
-              :ok
-          end
-        end
+      true ->
+        send(pid, {:live_render, :text_chunk, line <> "\n"})
+        acc
     end
   end
 
   defp build_system_prompt do
-    catalog_prompt = Example.Catalog.system_prompt(custom_rules: @custom_rules)
+    catalog_prompt = Example.Catalog.system_prompt(mode: :patch, custom_rules: @custom_rules)
 
     """
     You are a knowledgeable assistant that helps users explore data and learn about any topic.
@@ -154,12 +150,12 @@ defmodule Example.Agent do
 
     WORKFLOW:
     1. Call the appropriate tools to gather relevant data.
-    2. Respond with a brief, conversational summary of what you found.
-    3. Then output a JSON UI spec wrapped in a ```spec fence to render a rich visual experience.
+    2. Respond with a brief, conversational summary of what you found (1-3 sentences).
+    3. Then output the JSONL UI spec wrapped in a ```spec fence to render a rich visual experience.
 
     RULES:
     - Always call tools FIRST to get real data. Never make up data.
-    - Embed fetched data directly in the "state" object so components can reference it with {"$state": "/path"}.
+    - Embed fetched data directly in /state paths so components can reference it with {"$state": "/path"}.
     - Use Card components to group related information.
     - NEVER nest a Card inside another Card. Use Stack, Separator, or Heading inside Cards.
     - Use Grid for multi-column layouts.
@@ -170,25 +166,8 @@ defmodule Example.Agent do
     - Use Callout for key facts, tips, warnings, or important takeaways.
     - Use Accordion to organize detailed sections the user can expand.
     - Use Timeline for historical events, processes, or milestones.
-
-    SPEC FORMAT:
-    Output a JSON object wrapped in a ```spec fence:
-
-    ```spec
-    {
-      "root": "root-id",
-      "state": { ... },
-      "elements": {
-        "root-id": { "type": "stack", "props": { "direction": "vertical" }, "children": [...] },
-        ...
-      }
-    }
-    ```
-
-    DATA BINDING:
-    - Put fetched data in "state", then reference it with {"$state": "/json/pointer"} in any prop.
-    - For Table, use {"$state": "/path"} on the data prop.
-    - Conditional: {"$cond": {"$state": "/flag"}, "$then": "yes", "$else": "no"}
+    - Always emit /state patches right after the elements that use them, so the UI fills in progressively.
+    - If the user's message does not require a UI, respond with text only — no spec fence.
 
     #{catalog_prompt}
     """
