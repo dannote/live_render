@@ -212,7 +212,7 @@ defmodule ExampleWeb.ChatLive do
 
               <%!-- Text content --%>
               <div :if={msg.content != ""} class="text-sm leading-relaxed">
-                <PhoenixStreamdown.markdown content={msg.content} id={"msg-#{msg.id}"} />
+                <PhoenixStreamdown.markdown content={msg.content} id={"msg-#{msg.id}"} block_class="mb-3 last:mb-0" />
               </div>
 
               <%!-- Rendered spec --%>
@@ -239,7 +239,7 @@ defmodule ExampleWeb.ChatLive do
 
             <%!-- Streaming text --%>
             <div :if={@current_text != ""} class="text-sm leading-relaxed">
-              <PhoenixStreamdown.markdown content={strip_spec_fence(@current_text)} streaming animate="fadeIn" id="streaming" />
+              <PhoenixStreamdown.markdown content={strip_spec_fence(@current_text)} streaming animate="fadeIn" id="streaming" block_class="mb-3 last:mb-0" />
             </div>
 
             <%!-- Streaming spec --%>
