@@ -23,9 +23,16 @@ defmodule LiveRender.Components.Button do
   end
 
   defp variant_class(:default), do: "bg-primary text-primary-foreground hover:bg-primary/90"
-  defp variant_class(:secondary), do: "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-  defp variant_class(:destructive), do: "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-  defp variant_class(:outline), do: "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+
+  defp variant_class(:secondary),
+    do: "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+
+  defp variant_class(:destructive),
+    do: "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+
+  defp variant_class(:outline),
+    do: "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+
   defp variant_class(:ghost), do: "hover:bg-accent hover:text-accent-foreground"
 end
 

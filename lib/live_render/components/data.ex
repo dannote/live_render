@@ -69,7 +69,8 @@ defmodule LiveRender.Components.Badge do
     do: "border-transparent bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
 
   defp variant_class(:warning),
-    do: "border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+    do:
+      "border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
 
   defp variant_class(:error),
     do: "border-transparent bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
@@ -101,10 +102,11 @@ defmodule LiveRender.Components.Table do
   use Phoenix.Component
 
   def render(assigns) do
-    assigns = update(assigns, :data, fn
-      data when is_list(data) -> data
-      _ -> []
-    end)
+    assigns =
+      update(assigns, :data, fn
+        data when is_list(data) -> data
+        _ -> []
+      end)
 
     ~H"""
     <div :if={@data == []} class="text-center py-4 text-muted-foreground"><%= @empty_message %></div>

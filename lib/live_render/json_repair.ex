@@ -55,7 +55,12 @@ defmodule LiveRender.JSONRepair do
         _, acc -> acc
       end)
 
-    closers = Enum.map(opens, fn :obj -> "}"; :arr -> "]" end)
+    closers =
+      Enum.map(opens, fn
+        :obj -> "}"
+        :arr -> "]"
+      end)
+
     s <> Enum.join(closers)
   end
 end

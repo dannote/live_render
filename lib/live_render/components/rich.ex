@@ -150,12 +150,14 @@ defmodule LiveRender.Components.Progress do
 
   defp parse_value(v) when is_integer(v), do: v
   defp parse_value(v) when is_float(v), do: round(v)
+
   defp parse_value(v) when is_binary(v) do
     case Float.parse(v) do
       {n, _} -> round(n)
       :error -> 0
     end
   end
+
   defp parse_value(_), do: 0
 end
 
@@ -187,14 +189,17 @@ defmodule LiveRender.Components.Alert do
   end
 
   defp alert_class(:success),
-    do: "border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-100"
+    do:
+      "border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-100"
 
   defp alert_class(:warning),
-    do: "border-yellow-200 bg-yellow-50 text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-100"
+    do:
+      "border-yellow-200 bg-yellow-50 text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-100"
 
   defp alert_class(:error),
     do: "border-destructive/50 bg-destructive/10 text-destructive"
 
   defp alert_class(_),
-    do: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100"
+    do:
+      "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100"
 end

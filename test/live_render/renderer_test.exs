@@ -268,10 +268,11 @@ defmodule LiveRender.RendererTest do
       assert html =~ "Weather"
       assert html =~ "Hello"
 
-      with_more = put_in(partial["elements"]["m1"], %{
-        "type" => "metric",
-        "props" => %{"label" => "Temp", "value" => "72°F"}
-      })
+      with_more =
+        put_in(partial["elements"]["m1"], %{
+          "type" => "metric",
+          "props" => %{"label" => "Temp", "value" => "72°F"}
+        })
 
       with_more = put_in(with_more["elements"]["root"]["children"], ["h1", "m1"])
 

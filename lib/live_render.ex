@@ -43,6 +43,7 @@ defmodule LiveRender do
 
     state = (assigns.spec && assigns.spec["state"]) || %{}
     root = assigns.spec && assigns.spec["root"]
+
     assigns =
       assigns
       |> assign(:state, state)
