@@ -128,19 +128,35 @@ defmodule LiveRender.Components.Progress do
   use Phoenix.Component
 
   def render(assigns) do
+    pct = min(max(parse_value(assigns[:value]), 0), 100)
+    assigns = assign(assigns, :pct, pct)
+
     ~H"""
     <div class="space-y-2">
       <div :if={@label} class="flex justify-between text-sm">
         <span class="text-muted-foreground"><%= @label %></span>
-        <span class="text-muted-foreground"><%= @value %>%</span>
+        <span class="text-muted-foreground"><%= @pct %>%</span>
       </div>
-      <div class="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
-        <div class="h-full bg-primary transition-all" style={"width: #{min(max(@value, 0), 100)}%"}>
+      <div class="bg-primary/20 relative h-2 w-full overflow-hidden rounded-full">
+        <div
+          class="bg-primary h-full w-full flex-1 transition-all"
+          style={"transform: translateX(-#{100 - @pct}%)"}
+        >
         </div>
       </div>
     </div>
     """
   end
+
+  defp parse_value(v) when is_integer(v), do: v
+  defp parse_value(v) when is_float(v), do: round(v)
+  defp parse_value(v) when is_binary(v) do
+    case Float.parse(v) do
+      {n, _} -> round(n)
+      :error -> 0
+    end
+  end
+  defp parse_value(_), do: 0
 end
 
 defmodule LiveRender.Components.Alert do
