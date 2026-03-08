@@ -16,29 +16,24 @@ defmodule LiveRender.Components.Button do
 
   def render(assigns) do
     ~H"""
-    <button class={["px-4 py-2 rounded-lg text-sm font-medium transition-colors", variant_class(@variant)]} disabled={@disabled}>
+    <button class={["inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors h-9 px-4 py-2", variant_class(@variant)]} disabled={@disabled}>
       <%= @label %>
     </button>
     """
   end
 
-  defp variant_class(:default), do: "bg-blue-600 text-white hover:bg-blue-700"
-
-  defp variant_class(:secondary),
-    do: "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200"
-
-  defp variant_class(:destructive), do: "bg-red-600 text-white hover:bg-red-700"
-
-  defp variant_class(:outline),
-    do: "border border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
-
-  defp variant_class(:ghost), do: "hover:bg-gray-100 dark:hover:bg-gray-800"
+  defp variant_class(:default), do: "bg-primary text-primary-foreground hover:bg-primary/90"
+  defp variant_class(:secondary), do: "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+  defp variant_class(:destructive), do: "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  defp variant_class(:outline), do: "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+  defp variant_class(:ghost), do: "hover:bg-accent hover:text-accent-foreground"
 end
 
 defmodule LiveRender.Components.Tabs do
   use LiveRender.Component,
     name: "tabs",
-    description: "Tabbed content container",
+    description:
+      "Tabbed content container. Children must be tab_content elements with matching value props.",
     schema: [
       default_value: [type: :string, doc: "Initially active tab value"],
       tabs: [
@@ -53,21 +48,30 @@ defmodule LiveRender.Components.Tabs do
 
   def render(assigns) do
     default = assigns.default_value || (List.first(assigns.tabs) || %{})["value"]
-    assigns = assign(assigns, :default, default)
+    tab_id = "tabs-#{System.unique_integer([:positive])}"
+    assigns = assign(assigns, default: default, tab_id: tab_id)
 
     ~H"""
-    <div x-data={"{ activeTab: '#{@default}' }"}>
-      <div class="flex border-b border-gray-200 dark:border-gray-700 mb-4">
+    <div id={@tab_id} phx-hook="LiveRenderTabs" data-active={@default}>
+      <div class="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
         <button
           :for={tab <- @tabs}
-          x-on:click={"activeTab = '#{tab["value"]}'"}
-          x-bind:class={"activeTab === '#{tab["value"]}' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"}
-          class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+          data-tab-value={tab["value"]}
+          phx-click={
+            Phoenix.LiveView.JS.set_attribute({"data-active", tab["value"]}, to: "##{@tab_id}")
+            |> Phoenix.LiveView.JS.dispatch("lr:tab-change", to: "##{@tab_id}")
+          }
+          class={[
+            "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all",
+            "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow"
+          ]}
         >
           <%= tab["label"] %>
         </button>
       </div>
-      <%= render_slot(@inner_block) %>
+      <div class="mt-3">
+        <%= render_slot(@inner_block) %>
+      </div>
     </div>
     """
   end
@@ -86,7 +90,7 @@ defmodule LiveRender.Components.TabContent do
 
   def render(assigns) do
     ~H"""
-    <div x-show={"activeTab === '#{@value}'"}>
+    <div data-tab-content={@value} class="hidden data-[state=active]:block">
       <%= render_slot(@inner_block) %>
     </div>
     """

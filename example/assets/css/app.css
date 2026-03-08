@@ -218,6 +218,15 @@ button {
   margin: 1.5em 0;
 }
 
+@keyframes lr-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+[data-lr-enter] {
+  animation: lr-enter 0.25s ease-out both;
+}
+
 .psd-prose a {
   color: oklch(0.6 0.2 260);
   text-decoration: underline;

@@ -25,6 +25,29 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/example"
 import topbar from "../vendor/topbar"
 
+const LiveRenderEnter = {
+  mounted() {
+    this.el.dataset.lrEnter = ""
+  }
+}
+
+const LiveRenderTabs = {
+  mounted() {
+    this.syncTabs()
+    this.el.addEventListener("lr:tab-change", () => this.syncTabs())
+  },
+  updated() { this.syncTabs() },
+  syncTabs() {
+    const active = this.el.dataset.active
+    this.el.querySelectorAll("[data-tab-value]").forEach(btn => {
+      btn.dataset.state = btn.dataset.tabValue === active ? "active" : ""
+    })
+    this.el.querySelectorAll("[data-tab-content]").forEach(panel => {
+      panel.dataset.state = panel.dataset.tabContent === active ? "active" : ""
+    })
+  }
+}
+
 const ScrollBottom = {
   mounted() {
     this.scrollToBottom()
@@ -52,7 +75,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ScrollBottom},
+  hooks: {...colocatedHooks, ScrollBottom, LiveRenderTabs, LiveRenderEnter},
 })
 
 // Show progress bar on live navigation and form submits

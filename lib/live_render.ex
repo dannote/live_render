@@ -84,6 +84,7 @@ defmodule LiveRender do
         :if={@visible?}
         id={"#{@prefix}-#{@node_id}"}
         phx-update={if @freeze?, do: "ignore"}
+        phx-hook={if @streaming, do: "LiveRenderEnter"}
       >
         <%= if @streaming do %>
           <% changed_keys = @component_assigns |> Map.keys() |> Enum.into(%{}, &{&1, true}) %>
