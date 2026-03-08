@@ -133,14 +133,14 @@ defmodule MyApp.AI.Components.PriceCard do
     ~H"""
     <div class="rounded-lg border p-4">
       <span class="text-gray-500"><%= @label %></span>
-      <span class="text-2xl font-bold"><%= format(@price, @currency) %></span>
+      <span class="text-2xl font-bold"><%= symbol(@currency) %><%= :erlang.float_to_binary(@price, decimals: 2) %></span>
     </div>
     """
   end
 
-  defp format(price, :usd), do: "$#{:erlang.float_to_binary(price, decimals: 2)}"
-  defp format(price, :eur), do: "€#{:erlang.float_to_binary(price, decimals: 2)}"
-  defp format(price, :gbp), do: "£#{:erlang.float_to_binary(price, decimals: 2)}"
+  defp symbol(:usd), do: "$"
+  defp symbol(:eur), do: "€"
+  defp symbol(:gbp), do: "£"
 end
 ```
 
