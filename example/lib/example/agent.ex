@@ -100,13 +100,56 @@ defmodule Example.Agent do
   defp process_delta(delta, acc, pid) do
     buf = acc.line_buf <> delta
 
-    {lines, remainder} = split_lines(buf)
+    if acc.in_fence do
+      {lines, remainder} = split_lines(buf)
 
-    acc = Enum.reduce(lines, %{acc | line_buf: ""}, fn line, acc ->
-      process_line(line, acc, pid)
-    end)
+      acc = Enum.reduce(lines, %{acc | line_buf: ""}, fn line, acc ->
+        process_fence_line(line, acc, pid)
+      end)
 
-    %{acc | line_buf: remainder}
+      %{acc | line_buf: remainder}
+    else
+      case detect_fence_open(buf) do
+        {:fence, before, remainder} ->
+          if before != "", do: send(pid, {:live_render, :text_chunk, before})
+          %{acc | in_fence: true, line_buf: remainder}
+
+        :none ->
+          {passthrough, held} = hold_backticks(buf)
+          if passthrough != "", do: send(pid, {:live_render, :text_chunk, passthrough})
+          %{acc | line_buf: held}
+      end
+    end
+  end
+
+  defp detect_fence_open(buf) do
+    case String.split(buf, "```spec", parts: 2) do
+      [before, rest] ->
+        remainder = String.trim_leading(rest, "\n")
+        {:fence, before, remainder}
+
+      [_] ->
+        :none
+    end
+  end
+
+  defp hold_backticks(buf) do
+    if String.ends_with?(buf, "`") do
+      idx = byte_size(buf) - count_trailing_backticks(buf)
+      {binary_part(buf, 0, idx), binary_part(buf, idx, byte_size(buf) - idx)}
+    else
+      {buf, ""}
+    end
+  end
+
+  defp count_trailing_backticks(buf) do
+    buf
+    |> String.reverse()
+    |> then(&Regex.run(~r/\A`+/, &1))
+    |> case do
+      [m] -> byte_size(m)
+      nil -> 0
+    end
   end
 
   defp split_lines(buf) do
@@ -115,17 +158,14 @@ defmodule Example.Agent do
     {complete, remainder}
   end
 
-  defp process_line(line, acc, pid) do
+  defp process_fence_line(line, acc, pid) do
     trimmed = String.trim(line)
 
     cond do
-      not acc.in_fence and String.starts_with?(trimmed, "```spec") ->
-        %{acc | in_fence: true}
-
-      acc.in_fence and trimmed == "```" ->
+      trimmed == "```" ->
         %{acc | in_fence: false}
 
-      acc.in_fence ->
+      true ->
         case LiveRender.SpecPatch.parse_and_apply(acc.spec, trimmed) do
           {:ok, new_spec} ->
             send(pid, {:live_render, :spec, new_spec})
@@ -134,10 +174,6 @@ defmodule Example.Agent do
           :skip ->
             acc
         end
-
-      true ->
-        send(pid, {:live_render, :text_chunk, line <> "\n"})
-        acc
     end
   end
 

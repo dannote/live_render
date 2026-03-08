@@ -4,6 +4,7 @@
 @source "../../lib";
 @source "../../../lib";
 @source "../../deps/phoenix_streamdown/lib";
+@import "../../../../phoenix_streamdown/priv/static/phoenix_streamdown.css";
 @source inline("max-w-[85%]");
 
 @plugin "../vendor/heroicons";

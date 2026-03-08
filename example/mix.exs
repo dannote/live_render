@@ -41,7 +41,7 @@ defmodule Example.MixProject do
   defp deps do
     [
       {:live_render, path: ".."},
-      {:phoenix_streamdown, "~> 1.0.0-beta"},
+      {:phoenix_streamdown, path: "../../phoenix_streamdown"},
       {:jido, "~> 2.0"},
       {:jido_ai, "~> 2.0.0-rc"},
       {:jido_action, "~> 2.0"},
