@@ -11,6 +11,7 @@ Inspired by Vercel's [json-render](https://github.com/vercel-labs/json-render), 
 - **Guardrailed** — AI can only use components you register in a catalog
 - **Server-side** — specs stay on the server; no JSON runtime shipped to the client
 - **Streaming** — stable elements freeze with `phx-update="ignore"`, only the active node re-renders
+- **Progressive** — JSONL patch mode builds the UI element-by-element as the LLM streams
 - **Batteries included** — 18 built-in components ready to use
 - **Bring your own LLM** — works with ReqLLM, Jido, or any client that produces a spec map
 
@@ -75,7 +76,7 @@ Or bring your own client — anything that produces a spec map works.
 ```elixir
 def deps do
   [
-    {:live_render, "~> 0.1"}
+    {:live_render, "~> 0.2"}
   ]
 end
 ```
@@ -89,6 +90,8 @@ Optional dependencies unlock extra features:
 | `{:json_spec, "~> 1.1"}` | Elixir typespec-style schemas that compile to JSON Schema |
 
 ## Spec Format
+
+### Object mode (default)
 
 ```json
 {
@@ -112,7 +115,17 @@ Optional dependencies unlock extra features:
 }
 ```
 
-Each element has `type` (catalog component name), `props`, `children` (IDs), and optionally `visible` (conditions) and `on` (actions).
+### Patch mode (progressive streaming)
+
+Use `system_prompt(mode: :patch)` to instruct the LLM to output RFC 6902 JSONL patches. Each line adds or modifies a part of the spec, so the UI fills in progressively:
+
+    ```spec
+    {"op":"add","path":"/root","value":"main"}
+    {"op":"add","path":"/elements/main","value":{"type":"stack","props":{},"children":["m1"]}}
+    {"op":"add","path":"/elements/m1","value":{"type":"metric","props":{"label":"Users","value":"1,234"},"children":[]}}
+    ```
+
+Apply patches with `LiveRender.SpecPatch.parse_and_apply/2`. Supports `add`, `replace`, `remove`, and the `-` array append operator for streaming table rows.
 
 ## Custom Components
 
@@ -131,8 +144,8 @@ defmodule MyApp.AI.Components.PriceCard do
 
   def render(assigns) do
     ~H"""
-    <div class="rounded-lg border p-4">
-      <span class="text-gray-500"><%= @label %></span>
+    <div class="rounded-lg border border-border p-4">
+      <span class="text-sm text-muted-foreground"><%= @label %></span>
       <span class="text-2xl font-bold"><%= symbol(@currency) %><%= :erlang.float_to_binary(@price, decimals: 2) %></span>
     </div>
     """
@@ -153,7 +166,6 @@ defmodule MyApp.AI.Catalog do
   component MyApp.AI.Components.PriceCard
   component LiveRender.Components.Card
   component LiveRender.Components.Stack
-  # ...
 
   action :add_to_cart, description: "Add an item to the shopping cart"
 end
@@ -169,19 +181,37 @@ Any prop value can be an expression resolved against the spec's `state`:
 { "$state": "/user/name" }
 { "$cond": { "$state": "/loggedIn" }, "$then": "Welcome!", "$else": "Sign in" }
 { "$template": "Hello, ${/user/name}!" }
+{ "$concat": ["Humidity: ", { "$state": "/humidity" }, "%"] }
 ```
 
-## Visibility Conditions
+## Styling
 
-```json
-{
-  "type": "alert",
-  "props": { "message": "Error occurred" },
-  "visible": { "$state": "/hasError" }
-}
+Built-in components use CSS variable-based classes compatible with [shadcn/ui](https://ui.shadcn.com/) theming (`text-muted-foreground`, `bg-card`, `border-border`, `bg-primary`, etc.). Define these variables in your app's CSS to control colors in both light and dark mode.
+
+## Hooks
+
+The Tabs component requires a `LiveRenderTabs` hook. Register it in your `app.js`:
+
+```javascript
+const LiveRenderTabs = {
+  mounted() {
+    this.el.addEventListener("lr:tab-change", () => {
+      const active = this.el.dataset.active;
+      this.el.querySelectorAll("[data-tab-value]").forEach(btn => {
+        btn.dataset.state = btn.dataset.tabValue === active ? "active" : "inactive";
+      });
+      this.el.querySelectorAll("[data-tab-content]").forEach(panel => {
+        panel.dataset.state = panel.dataset.tabContent === active ? "active" : "inactive";
+      });
+    });
+    this.el.dispatchEvent(new Event("lr:tab-change"));
+  }
+};
+
+let liveSocket = new LiveSocket("/live", Socket, {
+  hooks: { LiveRenderTabs }
+});
 ```
-
-Supports equality checks (`"eq"`), negation (`"not"`), and arrays (all must be truthy).
 
 ## Built-in Components
 
@@ -221,12 +251,13 @@ With Jido, define tools as `Jido.Action` modules for a full ReAct agent loop.
 The [`example/`](example/) directory contains a chat application porting Vercel's json-render chat example:
 
 - Tools: weather, crypto, GitHub, Hacker News
-- Jido ReAct agent with streaming
-- PhoenixStreamdown for streaming markdown
+- Jido ReAct agent with JSONL patch streaming
+- PhoenixStreamdown for streaming markdown with word-level animations
+- OpenRouter and Anthropic support
 
 ```bash
 cd example
-cp .env.example .env  # add ANTHROPIC_API_KEY
+cp .env.example .env  # add your API key (Anthropic or OpenRouter)
 mix setup
 mix phx.server
 ```

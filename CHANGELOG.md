@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-03-08)
+
+- Update README: installation version, patch mode docs, `$concat`, hooks, styling section, example app instructions
+
 ## 0.2.0 (2026-03-08)
 
 ### Features
