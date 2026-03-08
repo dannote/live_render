@@ -80,12 +80,16 @@ defmodule LiveRender.Catalog.Builder do
           {"op":"add","path":"/root","value":"main"}
           {"op":"add","path":"/elements/main","value":{"type":"stack","props":{},"children":["heading","card-1"]}}
           {"op":"add","path":"/elements/heading","value":{"type":"heading","props":{"text":"Dashboard"},"children":[]}}
-          {"op":"add","path":"/elements/card-1","value":{"type":"card","props":{"title":"Stats"},"children":["metric-1"]}}
-          {"op":"add","path":"/elements/metric-1","value":{"type":"metric","props":{"label":"Users","value":{"$state":"/users"}},"children":[]}}
-          {"op":"add","path":"/state/users","value":"1,234"}
+          {"op":"add","path":"/elements/card-1","value":{"type":"card","props":{"title":"Stats"},"children":["metric-1","table-1"]}}
+          {"op":"add","path":"/elements/metric-1","value":{"type":"metric","props":{"label":"Users","value":"1,234"},"children":[]}}
+          {"op":"add","path":"/elements/table-1","value":{"type":"table","props":{"columns":[{"key":"name","label":"Name"}],"data":{"$state":"/items"}},"children":[]}}
+          {"op":"add","path":"/state/items","value":[]}
+          {"op":"add","path":"/state/items/-","value":{"name":"First"}}
+          {"op":"add","path":"/state/items/-","value":{"name":"Second"}}
           ```
 
-          For state arrays, stream one item at a time:
+          IMPORTANT: Inline scalar values directly in props. Only use {"$state":"/path"} for Table data arrays.
+          For arrays, stream one item at a time with the "-" append operator:
           {"op":"add","path":"/state/items","value":[]}
           {"op":"add","path":"/state/items/-","value":{"id":"1","name":"First"}}
           {"op":"add","path":"/state/items/-","value":{"id":"2","name":"Second"}}

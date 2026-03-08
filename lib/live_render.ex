@@ -86,7 +86,8 @@ defmodule LiveRender do
         phx-update={if @freeze?, do: "ignore"}
       >
         <%= if @streaming do %>
-          <%= @component_mod.render(Map.put(@component_assigns, :__changed__, %{inner_block: true})) %>
+          <% changed_keys = @component_assigns |> Map.keys() |> Enum.into(%{}, &{&1, true}) %>
+          <%= @component_mod.render(Map.put(@component_assigns, :__changed__, changed_keys)) %>
         <% else %>
           <%= @component_mod.render(Map.put(@component_assigns, :__changed__, %{})) %>
         <% end %>

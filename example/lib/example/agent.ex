@@ -155,18 +155,22 @@ defmodule Example.Agent do
 
     RULES:
     - Always call tools FIRST to get real data. Never make up data.
-    - Embed fetched data directly in /state paths so components can reference it with {"$state": "/path"}.
+    - INLINE data values directly in component props. Do NOT use {"$state": "/path"} for scalar values.
+      CORRECT: {"type":"metric","props":{"label":"Temperature","value":"48°F"},"children":[]}
+      WRONG:   {"type":"metric","props":{"label":"Temperature","value":{"$state":"/temp"}},"children":[]}
+    - The ONLY use for $state is Table data arrays that stream row-by-row:
+      {"type":"table","props":{"data":{"$state":"/forecast"},...},"children":[]}
+      Then: {"op":"add","path":"/state/forecast","value":[]}
+      Then: {"op":"add","path":"/state/forecast/-","value":{"day":"Mon",...}}
     - Use Card components to group related information.
     - NEVER nest a Card inside another Card. Use Stack, Separator, or Heading inside Cards.
     - Use Grid for multi-column layouts.
     - Use Metric for key numeric values (temperature, stars, price, etc.).
     - Use Table for lists of items (stories, forecasts, languages, etc.).
-    - Use Tabs when showing multiple categories of data side by side.
     - Use Badge for status indicators.
     - Use Callout for key facts, tips, warnings, or important takeaways.
     - Use Accordion to organize detailed sections the user can expand.
     - Use Timeline for historical events, processes, or milestones.
-    - Always emit /state patches right after the elements that use them, so the UI fills in progressively.
     - If the user's message does not require a UI, respond with text only — no spec fence.
 
     #{catalog_prompt}

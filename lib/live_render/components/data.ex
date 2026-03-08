@@ -29,10 +29,9 @@ defmodule LiveRender.Components.Metric do
     """
   end
 
-  defp display_value(nil), do: "—"
-  defp display_value(""), do: "—"
-  defp display_value(v) when is_map(v), do: "—"
-  defp display_value(v), do: v
+  defp display_value(nil), do: ""
+  defp display_value(v) when is_map(v), do: ""
+  defp display_value(v), do: to_string(v)
 
   defp trend_class(:up), do: "text-green-500"
   defp trend_class(:down), do: "text-red-500"
