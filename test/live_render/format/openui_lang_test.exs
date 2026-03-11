@@ -1,6 +1,9 @@
 defmodule LiveRender.Format.OpenUILangTest do
   use ExUnit.Case, async: true
 
+  import Phoenix.Component
+  import Phoenix.LiveViewTest
+
   alias LiveRender.Format.OpenUILang
 
   defp catalog_components do
@@ -158,6 +161,36 @@ defmodule LiveRender.Format.OpenUILangTest do
     end
   end
 
+  describe "end-to-end rendering" do
+    test "parsed OpenUI Lang spec renders through LiveRender.render" do
+      text = """
+      ```spec
+      root = Stack([heading, card1])
+      heading = Heading("Weather Dashboard")
+      card1 = Card([metric1, metric2], "New York")
+      metric1 = Metric("Temperature", "72°F")
+      metric2 = Metric("Wind", "8 mph")
+      ```
+      """
+
+      assert {:ok, spec} = OpenUILang.parse(text, parse_opts())
+
+      assigns = %{spec: spec, catalog: LiveRender.StandardCatalog, streaming: false}
+
+      html =
+        rendered_to_string(~H"""
+        <LiveRender.render spec={@spec} catalog={@catalog} streaming={@streaming} />
+        """)
+
+      assert html =~ "Weather Dashboard"
+      assert html =~ "New York"
+      assert html =~ "Temperature"
+      assert html =~ "72°F"
+      assert html =~ "Wind"
+      assert html =~ "8 mph"
+    end
+  end
+
   describe "streaming" do
     test "builds spec progressively line by line" do
       state = OpenUILang.stream_init(catalog: catalog_components())
@@ -191,6 +224,44 @@ defmodule LiveRender.Format.OpenUILangTest do
       {_state, events} = OpenUILang.stream_flush(state)
       assert [{:spec, spec}] = events
       assert spec["elements"]["root"]["type"] == "heading"
+    end
+
+    test "handles multiple lines in one chunk" do
+      state = OpenUILang.stream_init(catalog: catalog_components())
+      {state, _} = OpenUILang.stream_push(state, "```spec\n")
+
+      {_state, events} =
+        OpenUILang.stream_push(
+          state,
+          "root = Stack([h1, m1])\nh1 = Heading(\"Title\")\nm1 = Metric(\"X\", \"42\")\n"
+        )
+
+      assert [{:spec, spec}] = events
+      assert spec["elements"]["root"]["children"] == ["h1", "m1"]
+      assert spec["elements"]["h1"]["props"]["text"] == "Title"
+      assert spec["elements"]["m1"]["props"]["label"] == "X"
+    end
+
+    test "emits text after fence close" do
+      state = OpenUILang.stream_init(catalog: catalog_components())
+      {state, _} = OpenUILang.stream_push(state, "```spec\n")
+      {state, _} = OpenUILang.stream_push(state, "root = Heading(\"Hi\")\n")
+      {state, _events} = OpenUILang.stream_push(state, "```\nHere is the result!")
+      refute state.in_fence
+    end
+
+    test "stream_flush is no-op when not in fence" do
+      state = OpenUILang.stream_init(catalog: catalog_components())
+      {_state, events} = OpenUILang.stream_flush(state)
+      assert events == []
+    end
+
+    test "stream_flush is no-op when buffer is empty" do
+      state = OpenUILang.stream_init(catalog: catalog_components())
+      {state, _} = OpenUILang.stream_push(state, "```spec\n")
+      state = %{state | buffer: ""}
+      {_state, events} = OpenUILang.stream_flush(state)
+      assert events == []
     end
   end
 end

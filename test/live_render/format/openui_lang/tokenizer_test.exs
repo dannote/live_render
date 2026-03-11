@@ -79,6 +79,12 @@ defmodule LiveRender.Format.OpenUILang.TokenizerTest do
       assert [{:string, ~s|hello"world|}] = tokens
     end
 
+    test "handles multi-byte UTF-8 characters in strings" do
+      assert {:ok, [{:string, "72°F"}]} = Tokenizer.tokenize(~s|"72°F"|)
+      assert {:ok, [{:string, "Привет"}]} = Tokenizer.tokenize(~s|"Привет"|)
+      assert {:ok, [{:string, "🌡️ Hot"}]} = Tokenizer.tokenize(~s|"🌡️ Hot"|)
+    end
+
     test "skips comments" do
       assert {:ok, tokens} = Tokenizer.tokenize("a = b // comment\nc = d")
 

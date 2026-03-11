@@ -92,6 +92,32 @@ defmodule LiveRender.Format.OpenUILang.ParserTest do
     test "errors on invalid syntax" do
       assert {:error, _} = Parser.parse("= no identifier")
     end
+
+    test "parses component with no args" do
+      assert {:ok, [{:assign, "sep", {:component, "Separator", []}}]} =
+               Parser.parse("sep = Separator()")
+    end
+
+    test "parses multiline component args" do
+      input = """
+      root = Stack(
+        [a, b],
+        "vertical"
+      )
+      """
+
+      assert {:ok, [{:assign, "root", {:component, "Stack", [array, {:string, "vertical"}]}}]} =
+               Parser.parse(input)
+
+      assert {:array, [{:ref, "a"}, {:ref, "b"}]} = array
+    end
+
+    test "parses string with embedded quotes" do
+      input = ~s|t = Text("She said \\"hello\\"")|
+
+      assert {:ok, [{:assign, "t", {:component, "Text", [{:string, ~s|She said "hello"|}]}}]} =
+               Parser.parse(input)
+    end
   end
 
   describe "parse_line/1" do

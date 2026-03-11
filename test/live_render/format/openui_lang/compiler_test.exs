@@ -113,6 +113,35 @@ defmodule LiveRender.Format.OpenUILang.CompilerTest do
     end
   end
 
+  describe "edge cases" do
+    test "unknown component type produces empty element" do
+      spec = compile(~s|root = FancyWidget("hello")|)
+
+      assert spec["elements"]["root"]["type"] == "fancy_widget"
+      assert spec["elements"]["root"]["props"] == %{}
+      assert spec["elements"]["root"]["children"] == []
+    end
+
+    test "component with no args" do
+      spec = compile(~s|root = Separator()|)
+
+      assert spec["elements"]["root"]["type"] == "separator"
+      assert spec["elements"]["root"]["props"] == %{}
+    end
+
+    test "non-component assignments are not elements" do
+      spec =
+        compile("""
+        root = Heading("Hi")
+        labels = ["Jan", "Feb"]
+        """)
+
+      assert map_size(spec["elements"]) == 1
+      assert Map.has_key?(spec["elements"], "root")
+      refute Map.has_key?(spec["elements"], "labels")
+    end
+  end
+
   describe "name conversion" do
     test "to_snake_case converts PascalCase" do
       assert Compiler.to_snake_case("Heading") == "heading"
