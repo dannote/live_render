@@ -200,15 +200,30 @@ defmodule LiveRender.Format.OpenUILang do
   defp format_signature({_snake, mod}) do
     meta = mod.__component_meta__()
     pascal = Compiler.to_pascal_case(meta.name)
-    required = Map.get(mod.json_schema(), "required", [])
+    schema = mod.json_schema()
+    required = Map.get(schema, "required", [])
+    properties = Map.get(schema, "properties", %{})
 
     args =
       Enum.map(meta.prop_order, fn key ->
-        optional? = to_string(key) not in required and key != :children
-        if optional?, do: "#{key}?", else: to_string(key)
+        str_key = to_string(key)
+        optional? = str_key not in required and key != :children
+        type_hint = format_arg_type(Map.get(properties, str_key))
+        suffix = if optional?, do: "?", else: ""
+        "#{key}#{suffix}#{type_hint}"
       end)
 
     desc = if meta.description != "", do: " — #{meta.description}", else: ""
     "- `#{pascal}(#{Enum.join(args, ", ")})`#{desc}"
   end
+
+  defp format_arg_type(%{"enum" => values}) do
+    ": " <> Enum.map_join(values, "|", &inspect/1)
+  end
+
+  defp format_arg_type(%{"type" => "array"}), do: ": array"
+  defp format_arg_type(%{"type" => "integer"}), do: ": int"
+  defp format_arg_type(%{"type" => "number"}), do: ": number"
+  defp format_arg_type(%{"type" => "boolean"}), do: ": bool"
+  defp format_arg_type(_), do: ""
 end

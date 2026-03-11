@@ -28,7 +28,7 @@ defmodule Example.Agent do
     "For educational prompts ('teach me about', 'explain', 'what is'), use a mix of Callout, Accordion, Timeline to make the content visually rich."
   ]
 
-
+  @format Application.compile_env(:example, :format, LiveRender.Format.JSONPatch)
 
   @doc """
   Starts a streamed conversation with the ReAct agent.
@@ -43,11 +43,12 @@ defmodule Example.Agent do
   """
   def chat(prompt, pid, opts \\ []) do
     model = Keyword.get(opts, :model, default_model())
+    format = Keyword.get(opts, :format, @format)
 
     Task.start(fn ->
       config = %{
         model: model,
-        system_prompt: build_system_prompt(),
+        system_prompt: build_system_prompt(format),
         tools: @tools,
         max_iterations: 5,
         streaming: true,
@@ -56,11 +57,12 @@ defmodule Example.Agent do
       }
 
       try do
+        format_state = init_format_state(format)
+
         initial_acc = %{
-          line_buf: "",
           last_tool_iter: nil,
-          in_fence: false,
-          spec: %{"root" => nil, "elements" => %{}, "state" => %{}}
+          format: format,
+          format_state: format_state
         }
 
         Jido.AI.Reasoning.ReAct.stream(prompt, config)
@@ -73,7 +75,7 @@ defmodule Example.Agent do
             :tool_started ->
               name = event.tool_name || event.data[:tool_name] || "unknown"
               send(pid, {:live_render, :tool_start, name})
-              %{acc | last_tool_iter: event.iteration, line_buf: "", in_fence: false}
+              %{acc | last_tool_iter: event.iteration, format_state: init_format_state(format)}
 
             :tool_completed ->
               name = event.tool_name || event.data[:tool_name] || "unknown"
@@ -97,107 +99,44 @@ defmodule Example.Agent do
     end)
   end
 
+  defp init_format_state(format) do
+    case format do
+      LiveRender.Format.OpenUILang ->
+        format.stream_init(catalog: Example.Catalog.components())
+
+      _ ->
+        format.stream_init()
+    end
+  end
+
   defp process_delta(delta, acc, pid) do
-    buf = acc.line_buf <> delta
+    {new_format_state, events} = acc.format.stream_push(acc.format_state, delta)
 
-    if acc.in_fence do
-      {lines, remainder} = split_lines(buf)
-
-      acc = Enum.reduce(lines, %{acc | line_buf: ""}, fn line, acc ->
-        process_fence_line(line, acc, pid)
-      end)
-
-      %{acc | line_buf: remainder}
-    else
-      case detect_fence_open(buf) do
-        {:fence, before, remainder} ->
-          if before != "", do: send(pid, {:live_render, :text_chunk, before})
-          %{acc | in_fence: true, line_buf: remainder}
-
-        :none ->
-          {passthrough, held} = hold_backticks(buf)
-          if passthrough != "", do: send(pid, {:live_render, :text_chunk, passthrough})
-          %{acc | line_buf: held}
+    for event <- events do
+      case event do
+        {:text, text} -> send(pid, {:live_render, :text_chunk, text})
+        {:spec, spec} -> send(pid, {:live_render, :spec, spec})
       end
     end
+
+    %{acc | format_state: new_format_state}
   end
 
-  defp detect_fence_open(buf) do
-    case String.split(buf, "```spec", parts: 2) do
-      [before, rest] ->
-        remainder = String.trim_leading(rest, "\n")
-        {:fence, before, remainder}
+  defp build_system_prompt(format) do
+    catalog_prompt =
+      Example.Catalog.system_prompt(format: format, custom_rules: @custom_rules)
 
-      [_] ->
-        :none
-    end
-  end
-
-  defp hold_backticks(buf) do
-    if String.ends_with?(buf, "`") do
-      idx = byte_size(buf) - count_trailing_backticks(buf)
-      {binary_part(buf, 0, idx), binary_part(buf, idx, byte_size(buf) - idx)}
-    else
-      {buf, ""}
-    end
-  end
-
-  defp count_trailing_backticks(buf) do
-    buf
-    |> String.reverse()
-    |> then(&Regex.run(~r/\A`+/, &1))
-    |> case do
-      [m] -> byte_size(m)
-      nil -> 0
-    end
-  end
-
-  defp split_lines(buf) do
-    parts = String.split(buf, "\n", parts: :infinity)
-    {remainder, complete} = List.pop_at(parts, -1)
-    {complete, remainder}
-  end
-
-  defp process_fence_line(line, acc, pid) do
-    trimmed = String.trim(line)
-
-    cond do
-      trimmed == "```" ->
-        %{acc | in_fence: false}
-
-      true ->
-        case LiveRender.SpecPatch.parse_and_apply(acc.spec, trimmed) do
-          {:ok, new_spec} ->
-            send(pid, {:live_render, :spec, new_spec})
-            %{acc | spec: new_spec}
-
-          :skip ->
-            acc
-        end
-    end
-  end
-
-  defp build_system_prompt do
-    catalog_prompt = Example.Catalog.system_prompt(mode: :patch, custom_rules: @custom_rules)
-
-    """
+    preamble = """
     You are a knowledgeable assistant that helps users explore data and learn about any topic.
     You look up real-time information, build visual dashboards, and create rich educational content.
 
     WORKFLOW:
     1. Call the appropriate tools to gather relevant data.
     2. Respond with a brief, conversational summary of what you found (1-3 sentences).
-    3. Then output the JSONL UI spec wrapped in a ```spec fence to render a rich visual experience.
+    3. Then output the UI spec wrapped in a ```spec fence to render a rich visual experience.
 
     RULES:
     - Always call tools FIRST to get real data. Never make up data.
-    - INLINE data values directly in component props. Do NOT use {"$state": "/path"} for scalar values.
-      CORRECT: {"type":"metric","props":{"label":"Temperature","value":"48°F"},"children":[]}
-      WRONG:   {"type":"metric","props":{"label":"Temperature","value":{"$state":"/temp"}},"children":[]}
-    - The ONLY use for $state is Table data arrays that stream row-by-row:
-      {"type":"table","props":{"data":{"$state":"/forecast"},...},"children":[]}
-      Then: {"op":"add","path":"/state/forecast","value":[]}
-      Then: {"op":"add","path":"/state/forecast/-","value":{"day":"Mon",...}}
     - Use Card components to group related information.
     - NEVER nest a Card inside another Card. Use Stack, Separator, or Heading inside Cards.
     - Use Grid for multi-column layouts.
@@ -208,8 +147,21 @@ defmodule Example.Agent do
     - Use Accordion to organize detailed sections the user can expand.
     - Use Timeline for historical events, processes, or milestones.
     - If the user's message does not require a UI, respond with text only — no spec fence.
-
-    #{catalog_prompt}
     """
+
+    json_rules =
+      if format in [LiveRender.Format.JSONPatch, LiveRender.Format.JSONObject] do
+        """
+
+        - INLINE data values directly in component props. Do NOT use {"$state": "/path"} for scalar values.
+          CORRECT: {"type":"metric","props":{"label":"Temperature","value":"48°F"},"children":[]}
+          WRONG:   {"type":"metric","props":{"label":"Temperature","value":{"$state":"/temp"}},"children":[]}
+        - The ONLY use for $state is Table data arrays that stream row-by-row.
+        """
+      else
+        ""
+      end
+
+    preamble <> json_rules <> "\n" <> catalog_prompt
   end
 end

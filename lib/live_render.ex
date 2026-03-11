@@ -154,6 +154,7 @@ defmodule LiveRender do
       {:error, _} ->
         atomize_keys(resolved)
         |> apply_schema_defaults(component_mod.component_schema())
+        |> coerce_invalid_props(component_mod.component_schema())
     end
   end
 
@@ -225,4 +226,24 @@ defmodule LiveRender do
   end
 
   defp apply_schema_defaults(props, _schema), do: props
+
+  defp coerce_invalid_props(props, schema) when is_list(schema) do
+    Enum.reduce(schema, props, fn {key, spec}, acc ->
+      coerce_prop(acc, key, spec)
+    end)
+  end
+
+  defp coerce_invalid_props(props, _schema), do: props
+
+  defp coerce_prop(props, key, spec) do
+    val = Map.get(props, key)
+
+    with {:in, allowed} <- spec[:type],
+         false <- is_nil(val),
+         false <- val in allowed do
+      Map.put(props, key, spec[:default])
+    else
+      _ -> props
+    end
+  end
 end

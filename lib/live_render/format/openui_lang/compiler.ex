@@ -47,7 +47,7 @@ defmodule LiveRender.Format.OpenUILang.Compiler do
 
       resolved_props =
         Map.new(props, fn {key, val} ->
-          {to_string(key), resolve_value(val)}
+          {to_string(key), resolve_value(val) |> stringify_for_spec()}
         end)
 
       resolved_children =
@@ -119,6 +119,22 @@ defmodule LiveRender.Format.OpenUILang.Compiler do
 
   defp extract_ref_id({:ref, id}), do: id
   defp extract_ref_id(_), do: nil
+
+  # JSON specs use string keys and string/number/boolean/null/list/map values.
+  # Numbers and booleans pass through; everything else stays as-is.
+  # This ensures NimbleOptions coercion (string → atom for :in types) works
+  # the same way as it does for JSON-sourced specs.
+  defp stringify_for_spec(val) when is_number(val), do: val
+  defp stringify_for_spec(val) when is_boolean(val), do: val
+  defp stringify_for_spec(nil), do: nil
+  defp stringify_for_spec(val) when is_binary(val), do: val
+  defp stringify_for_spec(val) when is_list(val), do: Enum.map(val, &stringify_for_spec/1)
+
+  defp stringify_for_spec(val) when is_map(val) do
+    Map.new(val, fn {k, v} -> {to_string(k), stringify_for_spec(v)} end)
+  end
+
+  defp stringify_for_spec(val), do: val
 
   defp extract_state(_assignments, _name_map, _component_map), do: %{}
 

@@ -299,6 +299,23 @@ defmodule LiveRender.RendererTest do
       assert html =~ "No data"
     end
 
+    test "falls back to default when prop value is invalid for enum type" do
+      spec = %{
+        "root" => "h",
+        "elements" => %{
+          "h" => %{
+            "type" => "heading",
+            "props" => %{"text" => "Title", "level" => 1},
+            "children" => []
+          }
+        }
+      }
+
+      html = render_spec(spec)
+      assert html =~ "Title"
+      assert html =~ "<h2"
+    end
+
     test "renders grid with no children" do
       spec = %{
         "root" => "g",
