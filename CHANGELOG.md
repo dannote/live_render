@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.0 (2026-03-11)
+
+### Features
+
+- **`LiveRender.Format` behaviour** — pluggable spec format backends with 5 callbacks: `prompt/3`, `parse/2`, `stream_init/1`, `stream_push/2`, `stream_flush/1`
+- **`LiveRender.Format.JSONPatch`** — extracted from `SpecPatch` + `Builder`; JSONL RFC 6902 patches for progressive streaming
+- **`LiveRender.Format.JSONObject`** — extracted from `JSONRepair` + `Builder`; single JSON object format
+- **`LiveRender.Format.OpenUILang`** — compact line-oriented DSL that uses ~50% fewer tokens than JSON. Includes `Tokenizer`, `Parser` (recursive descent), and `Compiler` (AST → spec map) sub-modules
+- **Shared streaming helpers** — fence detection, backtick holding, and line splitting extracted to eliminate duplication across all three formats
+- **`prop_order/0` on components** — deterministic positional argument mapping for OpenUI Lang, derived from schema key order
+- **Type hints in OpenUI Lang signatures** — prompt shows valid enum values: `Heading(text, level?: "h1"|"h2"|"h3"|"h4")`
+- **`format:` option** for `system_prompt/1`, `Generate.stream_spec/3`, and `Generate.generate_spec/3`
+
+### Fixes
+
+- **Invalid enum prop crash** — when the LLM outputs an invalid value for an `{:in, values}` prop (e.g., integer `1` instead of `"h1"`), the renderer falls back to the schema default instead of crashing
+
+### Migration
+
+- The `mode: :patch` and `mode: :object` options continue to work and map to `LiveRender.Format.JSONPatch` and `LiveRender.Format.JSONObject` respectively
+- Default format remains `LiveRender.Format.JSONPatch` — no changes needed for existing code
+
 ## 0.2.1 (2026-03-08)
 
 - Update README: installation version, patch mode docs, `$concat`, hooks, styling section, example app instructions
