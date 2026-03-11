@@ -56,20 +56,29 @@ if Code.ensure_loaded?(ReqLLM) do
             )
           ]
         )
-    """
 
-    @spec_fence_regex ~r/```spec\n([\s\S]*?)(?:```|$)/
+    ## Format option
+
+    By default uses `LiveRender.Format.JSONPatch`. Pass `:format` to use a different backend:
+
+        LiveRender.Generate.stream_spec(model, prompt,
+          catalog: MyApp.AI.Catalog,
+          pid: self(),
+          format: LiveRender.Format.OpenUILang
+        )
+    """
 
     @doc """
     Streams an LLM response that may contain text and a UI spec.
 
     The LLM is prompted with the catalog's system prompt and instructed to output
-    a JSON spec wrapped in a `` ```spec `` fence when generating UI.
+    a spec in the given format (default: JSONL patches).
 
     ## Options
 
       * `:catalog` — catalog module (required)
       * `:pid` — process to receive messages (required)
+      * `:format` — module implementing `LiveRender.Format` (default: `LiveRender.Format.JSONPatch`)
       * `:tools` — list of `ReqLLM.Tool` structs or tool option keyword lists
       * `:model_opts` — extra options passed to `ReqLLM.stream_text/3` (temperature, max_tokens, etc.)
       * `:context` — prior conversation messages as `ReqLLM.Context` list
@@ -79,20 +88,23 @@ if Code.ensure_loaded?(ReqLLM) do
     def stream_spec(model, prompt, opts) do
       catalog = Keyword.fetch!(opts, :catalog)
       pid = Keyword.fetch!(opts, :pid)
+      format = Keyword.get(opts, :format, LiveRender.Format.JSONPatch)
       tools = Keyword.get(opts, :tools, [])
       model_opts = Keyword.get(opts, :model_opts, [])
       context = Keyword.get(opts, :context, [])
       custom_rules = Keyword.get(opts, :custom_rules, [])
 
-      system = build_system_prompt(catalog, custom_rules)
+      system = build_system_prompt(catalog, format, custom_rules)
       messages = build_messages(system, context, prompt)
 
       req_opts =
         model_opts
         |> Keyword.put_new(:tools, build_tools(tools))
 
+      format_opts = format_init_opts(format, catalog)
+
       Task.start(fn ->
-        run_stream(model, messages, req_opts, pid)
+        run_stream(model, messages, req_opts, format, format_opts, pid)
       end)
     end
 
@@ -109,12 +121,13 @@ if Code.ensure_loaded?(ReqLLM) do
             {:ok, map()} | {:error, term()}
     def generate_spec(model, prompt, opts) do
       catalog = Keyword.fetch!(opts, :catalog)
+      format = Keyword.get(opts, :format, LiveRender.Format.JSONPatch)
       tools = Keyword.get(opts, :tools, [])
       model_opts = Keyword.get(opts, :model_opts, [])
       context = Keyword.get(opts, :context, [])
       custom_rules = Keyword.get(opts, :custom_rules, [])
 
-      system = build_system_prompt(catalog, custom_rules)
+      system = build_system_prompt(catalog, format, custom_rules)
       messages = build_messages(system, context, prompt)
 
       req_opts =
@@ -124,30 +137,23 @@ if Code.ensure_loaded?(ReqLLM) do
       case ReqLLM.generate_text(model, messages, req_opts) do
         {:ok, response} ->
           text = ReqLLM.Response.text(response)
-          {:ok, extract_spec(text)}
+          parse_opts = format_init_opts(format, catalog)
+          format.parse(text, parse_opts)
 
         {:error, _} = error ->
           error
       end
     end
 
-    defp build_system_prompt(catalog, custom_rules) do
-      base = catalog.system_prompt(custom_rules: custom_rules)
-
-      base <>
+    defp build_system_prompt(catalog, format, custom_rules) do
+      catalog.system_prompt(format: format, custom_rules: custom_rules) <>
         """
 
 
-        ## Output format
+        ## Output instructions
 
-        When generating UI, output a JSON spec wrapped in a ```spec fence:
-
-        ```spec
-        {"root": "...", "state": {...}, "elements": {...}}
-        ```
-
+        When generating UI, output the spec wrapped in a ```spec fence.
         You may include text before and after the spec fence to explain what you built.
-        Output root and elements so the UI streams progressively.
         Always call tools first to get real data before building the UI.
         """
     end
@@ -173,22 +179,28 @@ if Code.ensure_loaded?(ReqLLM) do
       end)
     end
 
-    defp run_stream(model, messages, req_opts, pid) do
+    defp format_init_opts(LiveRender.Format.OpenUILang, catalog) do
+      [catalog: catalog.components()]
+    end
+
+    defp format_init_opts(_format, _catalog), do: []
+
+    defp run_stream(model, messages, req_opts, format, format_opts, pid) do
       case ReqLLM.stream_text(model, messages, req_opts) do
         {:ok, response} ->
-          text_acc =
+          state = format.stream_init(format_opts)
+
+          {final_state, _} =
             response
             |> ReqLLM.StreamResponse.tokens()
-            |> Enum.reduce("", fn token, acc ->
-              send(pid, {:live_render, :text_chunk, token})
-              acc <> token
+            |> Enum.reduce({state, nil}, fn token, {st, _} ->
+              {st, events} = format.stream_push(st, token)
+              dispatch_events(events, pid)
+              {st, nil}
             end)
 
-          spec = extract_spec(text_acc)
-
-          if spec != %{} do
-            send(pid, {:live_render, :spec, spec})
-          end
+          {_final_state, events} = format.stream_flush(final_state)
+          dispatch_events(events, pid)
 
           send(pid, {:live_render, :done, response})
 
@@ -197,27 +209,12 @@ if Code.ensure_loaded?(ReqLLM) do
       end
     end
 
-    defp extract_spec(text) do
-      case Regex.run(@spec_fence_regex, text) do
-        [_, json] -> parse_json(String.trim(json))
-        nil -> try_parse_raw_json(text)
-      end
-    end
-
-    defp try_parse_raw_json(text) do
-      trimmed = String.trim(text)
-
-      if String.starts_with?(trimmed, "{") do
-        parse_json(trimmed)
-      else
-        %{}
-      end
-    end
-
-    defp parse_json(str) do
-      case Jason.decode(str) do
-        {:ok, %{"root" => _, "elements" => _} = spec} -> spec
-        _ -> %{}
+    defp dispatch_events(events, pid) do
+      for event <- events do
+        case event do
+          {:text, text} -> send(pid, {:live_render, :text_chunk, text})
+          {:spec, spec} -> send(pid, {:live_render, :spec, spec})
+        end
       end
     end
   end

@@ -74,6 +74,10 @@ defmodule LiveRender.Component do
       @spec component_slots() :: [atom()]
       def component_slots, do: @_lr_slots
 
+      @doc "Ordered list of prop keys for positional argument mapping."
+      @spec prop_order() :: [atom()]
+      def prop_order, do: LiveRender.Component.derive_prop_order(@_lr_schema, @_lr_slots)
+
       @doc "JSON Schema representation of the component props."
       @spec json_schema() :: map()
       def json_schema do
@@ -93,9 +97,26 @@ defmodule LiveRender.Component do
           module: __MODULE__,
           description: @_lr_description,
           schema: @_lr_schema,
-          slots: @_lr_slots
+          slots: @_lr_slots,
+          prop_order: LiveRender.Component.derive_prop_order(@_lr_schema, @_lr_slots)
         }
       end
     end
   end
+
+  @doc """
+  Derives positional argument order from a component schema and slots.
+
+  Components with an `:inner_block` slot get `:children` as the first positional arg.
+  Remaining props follow schema key order.
+  """
+  @spec derive_prop_order(term(), [atom()]) :: [atom()]
+  def derive_prop_order(schema, slots) do
+    prefix = if :inner_block in slots, do: [:children], else: []
+    prefix ++ schema_keys(schema)
+  end
+
+  defp schema_keys(schema) when is_list(schema), do: Keyword.keys(schema)
+  defp schema_keys(schema) when is_map(schema), do: Map.keys(Map.get(schema, "properties", %{}))
+  defp schema_keys(_), do: []
 end

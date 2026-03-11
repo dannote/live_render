@@ -60,5 +60,37 @@ defmodule LiveRender.CatalogTest do
 
       assert prompt =~ "Always use Card for grouping"
     end
+
+    test "system_prompt with format: JSONPatch" do
+      prompt =
+        LiveRender.StandardCatalog.system_prompt(format: LiveRender.Format.JSONPatch)
+
+      assert prompt =~ "JSONL"
+      assert prompt =~ "RFC 6902"
+    end
+
+    test "system_prompt with format: JSONObject" do
+      prompt =
+        LiveRender.StandardCatalog.system_prompt(format: LiveRender.Format.JSONObject)
+
+      assert prompt =~ "JSON object"
+      assert prompt =~ "root"
+      refute prompt =~ "JSONL"
+    end
+
+    test "system_prompt with format: OpenUILang" do
+      prompt =
+        LiveRender.StandardCatalog.system_prompt(format: LiveRender.Format.OpenUILang)
+
+      assert prompt =~ "OpenUI Lang"
+      assert prompt =~ "Heading("
+      assert prompt =~ "Metric("
+      refute prompt =~ "JSONL"
+    end
+
+    test "system_prompt with legacy mode: :object" do
+      prompt = LiveRender.StandardCatalog.system_prompt(mode: :object)
+      assert prompt =~ "JSON object"
+    end
   end
 end
