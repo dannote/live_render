@@ -183,6 +183,10 @@ if Code.ensure_loaded?(ReqLLM) do
       [catalog: catalog.components()]
     end
 
+    defp format_init_opts(LiveRender.Format.A2UI, catalog) do
+      [catalog: catalog.components()]
+    end
+
     defp format_init_opts(_format, _catalog), do: []
 
     defp run_stream(model, messages, req_opts, format, format_opts, pid) do

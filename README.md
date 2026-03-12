@@ -99,6 +99,7 @@ LiveRender supports multiple spec formats through the `LiveRender.Format` behavi
 | **JSON Patch** | `LiveRender.Format.JSONPatch` | High | Progressive streaming — UI appears element-by-element |
 | **JSON Object** | `LiveRender.Format.JSONObject` | High | Simple one-shot generation |
 | **OpenUI Lang** | `LiveRender.Format.OpenUILang` | **~50% less** | Token-sensitive workloads, fast models |
+| **A2UI** | `LiveRender.Format.A2UI` | High | Interop with [A2UI](https://github.com/google/A2UI) agents and transports |
 
 Pass `:format` to `system_prompt/1` or `stream_spec/3`:
 
@@ -180,6 +181,18 @@ Arguments are positional, mapped to props by the component's schema key order. T
 ```
 
 OpenUI Lang compiles to the same spec map as JSON formats — the renderer doesn't care which format produced the spec.
+
+### A2UI
+
+Google's [A2UI protocol](https://github.com/google/A2UI) — a JSONL stream of envelope messages (`createSurface`, `updateComponents`, `updateDataModel`, `deleteSurface`). Use this format to consume UI from A2UI-speaking agents over A2A, AG UI, MCP, or any other transport.
+
+    ```spec
+    {"version":"v0.10","createSurface":{"surfaceId":"main","catalogId":"basic"}}
+    {"version":"v0.10","updateComponents":{"surfaceId":"main","components":[{"id":"root","component":"Stack","children":["heading","metric1"]},{"id":"heading","component":"Heading","text":"Dashboard"},{"id":"metric1","component":"Metric","label":"Users","value":{"path":"/users/count"}}]}}
+    {"version":"v0.10","updateDataModel":{"surfaceId":"main","path":"/users","value":{"count":"1,234"}}}
+    ```
+
+A2UI data bindings (`{"path": "/..."}`) are automatically converted to LiveRender's `{"$state": "/..."}` expressions. Component names use PascalCase and are mapped to catalog entries via snake_case conversion.
 
 ### Custom Formats
 

@@ -11,6 +11,7 @@ defmodule LiveRender.Format do
   - `LiveRender.Format.JSONPatch` — JSONL RFC 6902 patches (progressive streaming)
   - `LiveRender.Format.JSONObject` — single JSON object with root/elements/state
   - `LiveRender.Format.OpenUILang` — compact line-oriented DSL (~50% fewer tokens)
+  - `LiveRender.Format.A2UI` — Google's A2UI protocol (JSONL envelopes, interoperable)
   """
 
   @type spec :: %{String.t() => term()}

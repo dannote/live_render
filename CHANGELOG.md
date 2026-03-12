@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (2026-03-12)
+
+### Features
+
+- **`LiveRender.Format.A2UI`** — adapter for Google's [A2UI protocol](https://github.com/google/A2UI). Consumes A2UI JSONL envelope messages (`createSurface`, `updateComponents`, `updateDataModel`, `deleteSurface`) and translates them to LiveRender specs. Supports progressive streaming, automatic PascalCase→snake_case component mapping, and conversion of A2UI data bindings (`{"path": "/..."}`) to LiveRender's `{"$state": "/..."}` expressions. Works with A2UI agents over A2A, AG UI, MCP, WebSockets, or any transport.
+
 ## 0.3.0 (2026-03-11)
 
 ### Features
