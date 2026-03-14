@@ -71,6 +71,26 @@ defmodule LiveRender.Format.YAMLTest do
       assert spec["elements"]["main"]["children"] == ["heading"]
     end
 
+    test "parses YAML from a ```yaml fence" do
+      text = """
+      Here's a dashboard:
+
+      ```yaml
+      root: main
+      elements:
+        main:
+          type: heading
+          props:
+            text: Hello
+          children: []
+      ```
+      """
+
+      assert {:ok, spec} = YAML.parse(text)
+      assert spec["root"] == "main"
+      assert spec["elements"]["main"]["props"]["text"] == "Hello"
+    end
+
     test "parses bare YAML without fence" do
       text = """
       root: a
@@ -178,6 +198,22 @@ defmodule LiveRender.Format.YAMLTest do
 
       {_state, events} = YAML.stream_push(state, "```\n")
       assert events == []
+    end
+
+    test "detects ```yaml fence during streaming" do
+      state = YAML.stream_init()
+
+      {state, events} = YAML.stream_push(state, "Here:\n\n```yaml\n")
+      assert [{:text, "Here:\n\n"}] = events
+
+      {_state, events} =
+        YAML.stream_push(
+          state,
+          "root: main\nelements:\n  main:\n    type: heading\n    props:\n      text: Hi\n    children: []\n"
+        )
+
+      assert [{:spec, spec}] = events
+      assert spec["root"] == "main"
     end
 
     test "handles text before fence" do

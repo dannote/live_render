@@ -51,10 +51,42 @@ if Code.ensure_loaded?(YamlElixir) do
       }
     end
 
+    @fence_markers ["```spec", "```yaml"]
+
     @impl true
     def stream_push(state, chunk) do
-      Shared.stream_push(state, chunk, &process_fence_buffer/2)
+      buf = state.buffer <> chunk
+
+      if state.in_fence do
+        process_fence_buffer(state, buf)
+      else
+        {fields, events} = detect_yaml_fence(state, buf)
+        {Map.merge(state, fields), events}
+      end
     end
+
+    defp detect_yaml_fence(state, buf) do
+      case find_fence(buf, @fence_markers) do
+        {:found, before, rest} ->
+          remainder = String.trim_leading(rest, "\n")
+          events = if before != "", do: [{:text, before}], else: []
+          {Map.merge(state, %{in_fence: true, buffer: remainder}), events}
+
+        :not_found ->
+          {passthrough, held} = Shared.hold_backticks(buf)
+          events = if passthrough != "", do: [{:text, passthrough}], else: []
+          {Map.put(state, :buffer, held), events}
+      end
+    end
+
+    defp find_fence(buf, [marker | rest]) do
+      case String.split(buf, marker, parts: 2) do
+        [before, after_fence] -> {:found, before, after_fence}
+        [_] -> find_fence(buf, rest)
+      end
+    end
+
+    defp find_fence(_buf, []), do: :not_found
 
     @impl true
     def stream_flush(state) do
@@ -135,7 +167,7 @@ if Code.ensure_loaded?(YamlElixir) do
 
     # --- One-shot parsing ---
 
-    @spec_fence_regex ~r/```spec\n([\s\S]*?)(?:```|$)/
+    @spec_fence_regex ~r/```(?:spec|yaml)\n([\s\S]*?)(?:```|$)/
 
     defp extract_fence(text) do
       case Regex.run(@spec_fence_regex, text) do

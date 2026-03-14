@@ -148,7 +148,7 @@ defmodule ExampleWeb.ChatLive do
 
   defp strip_spec_fence(text) do
     text
-    |> String.replace(~r/```spec\n[\s\S]*?(?:```|$)/, "")
+    |> String.replace(~r/```(?:spec|yaml)\n[\s\S]*?(?:```|$)/, "")
     |> String.trim()
   end
 
