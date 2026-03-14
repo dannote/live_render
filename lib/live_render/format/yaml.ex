@@ -92,12 +92,16 @@ if Code.ensure_loaded?(YamlElixir) do
         parsed ->
           spec = maybe_merge(state.merge_base, parsed)
 
-          if spec != state.spec do
+          if spec != state.spec and valid_spec?(spec) do
             {%{state | spec: spec}, [{:spec, spec}]}
           else
             {state, []}
           end
       end
+    end
+
+    defp valid_spec?(spec) do
+      is_binary(spec["root"]) and is_map(spec["elements"])
     end
 
     defp parse_trimmed(""), do: nil

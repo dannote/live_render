@@ -158,14 +158,16 @@ defmodule LiveRender.Format.YAMLTest do
       {state, events} = YAML.stream_push(state, "Here's the UI:\n\n```spec\n")
       assert [{:text, "Here's the UI:\n\n"}] = events
 
+      # root alone is not a valid spec — no emission yet
       {state, events} = YAML.stream_push(state, "root: main\n")
-      assert [{:spec, spec}] = events
-      assert spec["root"] == "main"
+      assert events == []
 
+      # elements with a type makes it valid — first emission
       {state, events} =
         YAML.stream_push(state, "elements:\n  main:\n    type: heading\n")
 
       assert [{:spec, spec}] = events
+      assert spec["root"] == "main"
       assert spec["elements"]["main"]["type"] == "heading"
 
       {state, events} =
@@ -193,20 +195,20 @@ defmodule LiveRender.Format.YAMLTest do
       assert events == []
     end
 
-    test "stream_flush processes remaining buffer without trailing newline" do
+    test "stream_flush parses buffer that had no newline" do
       state = YAML.stream_init()
       {state, _} = YAML.stream_push(state, "```spec\n")
 
-      # No trailing newline — push won't attempt parse
+      # Single chunk with no newline — push skips parse
       {state, events} = YAML.stream_push(state, "root: x")
       assert events == []
 
+      # Flush forces parse, but root-only is not valid (no elements)
       {_state, events} = YAML.stream_flush(state)
-      assert [{:spec, spec}] = events
-      assert spec["root"] == "x"
+      assert events == []
     end
 
-    test "waits for complete YAML before emitting" do
+    test "waits for complete line before attempting parse" do
       state = YAML.stream_init()
       {state, _} = YAML.stream_push(state, "```spec\n")
 
@@ -214,10 +216,20 @@ defmodule LiveRender.Format.YAMLTest do
       {state, events} = YAML.stream_push(state, "root: ma")
       assert events == []
 
-      # Complete the line
-      {_state, events} = YAML.stream_push(state, "in\n")
+      # Complete the root line but still no elements — no spec emitted yet
+      {state, events} = YAML.stream_push(state, "in\n")
+      assert events == []
+
+      # Add elements to make it a valid spec
+      {_state, events} =
+        YAML.stream_push(
+          state,
+          "elements:\n  main:\n    type: heading\n    props: {}\n    children: []\n"
+        )
+
       assert [{:spec, spec}] = events
       assert spec["root"] == "main"
+      assert spec["elements"]["main"]["type"] == "heading"
     end
 
     test "streaming with merge edit against current_spec" do
@@ -243,12 +255,34 @@ defmodule LiveRender.Format.YAMLTest do
       assert spec["elements"]["main"]["type"] == "stack"
     end
 
+    test "does not emit spec with non-map elements" do
+      state = YAML.stream_init()
+      {state, _} = YAML.stream_push(state, "```spec\n")
+
+      # "elements:" on same line as value would parse elements as a scalar
+      {_state, events} = YAML.stream_push(state, "root: main\nelements: main\n")
+      assert events == []
+    end
+
+    test "does not emit spec without root" do
+      state = YAML.stream_init()
+      {state, _} = YAML.stream_push(state, "```spec\n")
+
+      {_state, events} = YAML.stream_push(state, "elements:\n  main:\n    type: heading\n")
+      assert events == []
+    end
+
     test "emits no events when parse result unchanged" do
       state = YAML.stream_init()
       {state, _} = YAML.stream_push(state, "```spec\n")
-      {state, _} = YAML.stream_push(state, "root: main\n")
 
-      # Same content, adding a comment-like blank line
+      {state, _} =
+        YAML.stream_push(
+          state,
+          "root: main\nelements:\n  main:\n    type: text\n    props: {}\n    children: []\n"
+        )
+
+      # Adding a blank line doesn't change the parsed result
       {_state, events} = YAML.stream_push(state, "\n")
       assert events == []
     end

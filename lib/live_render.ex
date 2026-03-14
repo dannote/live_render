@@ -110,8 +110,10 @@ defmodule LiveRender do
   end
 
   defp get_node(spec, node_id) do
-    elements = spec["elements"] || %{}
-    elements[node_id]
+    case spec["elements"] do
+      elements when is_map(elements) -> elements[node_id]
+      _ -> nil
+    end
   end
 
   defp prepare_node_assigns(assigns, node, component_mod) do
