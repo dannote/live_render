@@ -122,6 +122,33 @@ defmodule LiveRender.Format.YAMLTest do
       assert spec["elements"]["heading"]["type"] == "heading"
       assert spec["elements"]["main"]["type"] == "stack"
     end
+
+    test "merge edit with null deletes element" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "stack", "props" => %{}, "children" => ["heading", "old"]},
+          "heading" => %{"type" => "heading", "props" => %{"text" => "Hi"}, "children" => []},
+          "old" => %{"type" => "text", "props" => %{}, "children" => []}
+        }
+      }
+
+      text = """
+      ```spec
+      elements:
+        old: null
+        main:
+          children:
+            - heading
+      ```
+      """
+
+      assert {:ok, spec} = YAML.parse(text, current_spec: current_spec)
+      assert spec["root"] == "main"
+      assert spec["elements"]["heading"]["type"] == "heading"
+      refute Map.has_key?(spec["elements"], "old")
+      assert spec["elements"]["main"]["children"] == ["heading"]
+    end
   end
 
   describe "streaming" do

@@ -76,21 +76,26 @@ defmodule LiveRender.Format.JSONPatch do
     {%{state | in_fence: false}, events}
   end
 
+  defp process_single_line(state, events, "") do
+    {state, events}
+  end
+
+  defp process_single_line(state, events, "//" <> _) do
+    {state, events}
+  end
+
   defp process_single_line(state, events, line) do
     case Jason.decode(line) do
       {:ok, %{"__lr_edit" => true} = merge_patch} ->
-        patch = Map.delete(merge_patch, "__lr_edit")
-        new_spec = SpecMerge.merge(state.spec, patch)
+        new_spec = SpecMerge.merge(state.spec, Map.delete(merge_patch, "__lr_edit"))
+        {%{state | spec: new_spec}, events ++ [{:spec, new_spec}]}
+
+      {:ok, %{"op" => _, "path" => _} = patch} ->
+        new_spec = LiveRender.SpecPatch.apply(state.spec, patch)
         {%{state | spec: new_spec}, events ++ [{:spec, new_spec}]}
 
       _ ->
-        case LiveRender.SpecPatch.parse_and_apply(state.spec, line) do
-          {:ok, new_spec} ->
-            {%{state | spec: new_spec}, events ++ [{:spec, new_spec}]}
-
-          :skip ->
-            {state, events}
-        end
+        {state, events}
     end
   end
 
@@ -119,15 +124,19 @@ defmodule LiveRender.Format.JSONPatch do
   defp apply_line(line, spec) do
     trimmed = String.trim(line)
 
-    case Jason.decode(trimmed) do
-      {:ok, %{"__lr_edit" => true} = merge_patch} ->
-        SpecMerge.merge(spec, Map.delete(merge_patch, "__lr_edit"))
+    if trimmed == "" or String.starts_with?(trimmed, "//") do
+      spec
+    else
+      case Jason.decode(trimmed) do
+        {:ok, %{"__lr_edit" => true} = merge_patch} ->
+          SpecMerge.merge(spec, Map.delete(merge_patch, "__lr_edit"))
 
-      _ ->
-        case LiveRender.SpecPatch.parse_and_apply(spec, line) do
-          {:ok, new_spec} -> new_spec
-          :skip -> spec
-        end
+        {:ok, %{"op" => _, "path" => _} = patch} ->
+          LiveRender.SpecPatch.apply(spec, patch)
+
+        _ ->
+          spec
+      end
     end
   end
 

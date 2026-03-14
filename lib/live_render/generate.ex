@@ -149,15 +149,14 @@ if Code.ensure_loaded?(ReqLLM) do
     end
 
     defp build_system_prompt(catalog, format, custom_rules, current_spec) do
+      prompt_opts = [format: format, custom_rules: custom_rules]
+
       prompt_opts =
-        [format: format, custom_rules: custom_rules]
-        |> then(fn opts ->
-          if current_spec && current_spec != %{} do
-            Keyword.put(opts, :current_spec, current_spec)
-          else
-            opts
-          end
-        end)
+        if is_map(current_spec) and map_size(current_spec) > 0 do
+          Keyword.put(prompt_opts, :current_spec, current_spec)
+        else
+          prompt_opts
+        end
 
       catalog.system_prompt(prompt_opts) <>
         """
@@ -201,7 +200,7 @@ if Code.ensure_loaded?(ReqLLM) do
     end
 
     defp format_init_opts(_format, _catalog, nil), do: []
-    defp format_init_opts(_format, _catalog, spec) when spec == %{}, do: []
+    defp format_init_opts(_format, _catalog, spec) when map_size(spec) == 0, do: []
 
     defp format_init_opts(_format, _catalog, current_spec) do
       [current_spec: current_spec]

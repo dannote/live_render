@@ -13,6 +13,10 @@ if Code.ensure_loaded?(YamlElixir) do
     When a `:current_spec` is provided via opts, the format supports merge edits:
     the LLM outputs only the changed keys and they are deep-merged into the
     existing spec using RFC 7396 semantics.
+
+    Note: a YAML document containing both `root` and `elements` top-level keys
+    is treated as a full spec replacement, not a merge edit. Edits that need to
+    change `root` while also updating elements should include all keys.
     """
 
     @behaviour LiveRender.Format
@@ -42,7 +46,7 @@ if Code.ensure_loaded?(YamlElixir) do
       %{
         buffer: "",
         in_fence: false,
-        snapshot: current_spec,
+        merge_base: current_spec,
         spec: current_spec
       }
     end
@@ -86,7 +90,7 @@ if Code.ensure_loaded?(YamlElixir) do
           {state, []}
 
         parsed ->
-          spec = maybe_merge(state.snapshot, parsed)
+          spec = maybe_merge(state.merge_base, parsed)
 
           if spec != state.spec do
             {%{state | spec: spec}, [{:spec, spec}]}
@@ -105,13 +109,13 @@ if Code.ensure_loaded?(YamlElixir) do
       end
     end
 
-    defp maybe_merge(snapshot, parsed) when snapshot == %{}, do: parsed
+    defp maybe_merge(merge_base, parsed) when map_size(merge_base) == 0, do: parsed
 
-    defp maybe_merge(snapshot, parsed) do
+    defp maybe_merge(merge_base, parsed) do
       if Map.has_key?(parsed, "root") and Map.has_key?(parsed, "elements") do
         parsed
       else
-        SpecMerge.merge(snapshot, parsed)
+        SpecMerge.merge(merge_base, parsed)
       end
     end
 

@@ -220,8 +220,6 @@ defmodule LiveRender.Format.Shared do
 
   defp serialize_spec_yaml(spec) do
     spec
-    |> Jason.encode!()
-    |> Jason.decode!()
     |> yaml_serialize()
     |> String.trim()
   end
