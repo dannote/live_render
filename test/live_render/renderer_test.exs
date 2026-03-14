@@ -314,6 +314,20 @@ defmodule LiveRender.RendererTest do
       assert html =~ "<div"
     end
 
+    test "survives spec with string element value (YAML incremental parse)" do
+      spec = %{"root" => "main", "elements" => %{"main" => "type"}}
+
+      html = render_spec(spec)
+      assert html =~ "<div"
+    end
+
+    test "survives spec with nil element value" do
+      spec = %{"root" => "main", "elements" => %{"main" => nil}}
+
+      html = render_spec(spec)
+      assert html =~ "<div"
+    end
+
     test "falls back to default when prop value is invalid for enum type" do
       spec = %{
         "root" => "h",
@@ -427,6 +441,62 @@ defmodule LiveRender.RendererTest do
       assert all_specs != []
       final_html = render_spec(List.last(all_specs))
       assert final_html =~ "Hello"
+    end
+
+    test "renders every intermediate YAML spec even with token-level chunks" do
+      alias LiveRender.Format.YAML
+
+      # Simulate LLM token-by-token streaming (small chunks that create
+      # intermediate parse states like %{"main" => "type"})
+      yaml = """
+      root: main
+      elements:
+        main:
+          type: stack
+          props: {}
+          children:
+            - heading
+        heading:
+          type: heading
+          props:
+            text: Hello
+          children: []
+      """
+
+      state = YAML.stream_init()
+      {state, _} = YAML.stream_push(state, "```spec\n")
+
+      # Feed character by character
+      {final_state, _} =
+        yaml
+        |> String.graphemes()
+        |> Enum.reduce({state, []}, fn char, {st, specs} ->
+          {st, events} = YAML.stream_push(st, char)
+
+          new_specs =
+            for {:spec, spec} <- events do
+              try do
+                html = render_spec(spec, streaming: true)
+                assert is_binary(html)
+              rescue
+                e ->
+                  flunk(
+                    "render_spec crashed on: #{inspect(spec, pretty: true)}\n#{Exception.message(e)}"
+                  )
+              end
+
+              spec
+            end
+
+          {st, specs ++ new_specs}
+        end)
+
+      {_final, flush_events} = YAML.stream_flush(final_state)
+
+      for {:spec, spec} <- flush_events do
+        html = render_spec(spec, streaming: true)
+        assert is_binary(html), "render_spec crashed on flush: #{inspect(spec)}"
+      end
     end
 
     test "renders full weather comparison spec without crashing" do

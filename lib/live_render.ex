@@ -111,14 +111,20 @@ defmodule LiveRender do
 
   defp get_node(spec, node_id) do
     case spec["elements"] do
-      elements when is_map(elements) -> elements[node_id]
-      _ -> nil
+      elements when is_map(elements) ->
+        case elements[node_id] do
+          node when is_map(node) -> node
+          _ -> nil
+        end
+
+      _ ->
+        nil
     end
   end
 
   defp prepare_node_assigns(assigns, node, component_mod) do
     validated_props = resolve_and_validate(node, component_mod, assigns.state)
-    children = node["children"] || []
+    children = if is_list(node["children"]), do: node["children"], else: []
     has_children? = children != []
     has_slots? = component_mod.component_slots() != []
 
@@ -146,7 +152,7 @@ defmodule LiveRender do
   end
 
   defp resolve_and_validate(node, component_mod, state) do
-    raw_props = node["props"] || %{}
+    raw_props = if is_map(node["props"]), do: node["props"], else: %{}
     resolved = StateResolver.resolve(raw_props, state)
 
     case component_mod.validate_props(resolved) do

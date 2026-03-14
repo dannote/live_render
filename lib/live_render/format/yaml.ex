@@ -101,8 +101,18 @@ if Code.ensure_loaded?(YamlElixir) do
     end
 
     defp valid_spec?(spec) do
-      is_binary(spec["root"]) and is_map(spec["elements"])
+      is_binary(spec["root"]) and is_map(spec["elements"]) and
+        spec["elements"] != %{} and
+        Enum.all?(spec["elements"], fn
+          {_k, nil} -> true
+          {_k, v} when is_map(v) -> is_binary(v["type"]) and valid_props?(v["props"])
+          _ -> false
+        end)
     end
+
+    defp valid_props?(nil), do: true
+    defp valid_props?(props) when is_map(props), do: true
+    defp valid_props?(_), do: false
 
     defp parse_trimmed(""), do: nil
 

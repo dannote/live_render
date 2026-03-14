@@ -264,6 +264,15 @@ defmodule LiveRender.Format.YAMLTest do
       assert events == []
     end
 
+    test "does not emit spec with string element values" do
+      state = YAML.stream_init()
+      {state, _} = YAML.stream_push(state, "```spec\n")
+
+      # Intermediate parse: "main:\n    type" parses as %{"main" => "type"}
+      {_state, events} = YAML.stream_push(state, "root: main\nelements:\n  main: type\n")
+      assert events == []
+    end
+
     test "does not emit spec without root" do
       state = YAML.stream_init()
       {state, _} = YAML.stream_push(state, "```spec\n")
