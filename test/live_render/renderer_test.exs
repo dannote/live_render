@@ -299,6 +299,21 @@ defmodule LiveRender.RendererTest do
       assert html =~ "No data"
     end
 
+    test "survives spec with non-map elements" do
+      spec = %{"root" => "main", "elements" => "main"}
+
+      html = render_spec(spec)
+      assert html =~ "<div"
+      refute html =~ "main"
+    end
+
+    test "survives spec with nil elements" do
+      spec = %{"root" => "main", "elements" => nil}
+
+      html = render_spec(spec)
+      assert html =~ "<div"
+    end
+
     test "falls back to default when prop value is invalid for enum type" do
       spec = %{
         "root" => "h",
@@ -326,6 +341,92 @@ defmodule LiveRender.RendererTest do
 
       html = render_spec(spec)
       assert html =~ "grid"
+    end
+
+    test "renders every intermediate YAML streaming spec without crashing" do
+      alias LiveRender.Format.YAML
+
+      yaml_chunks = [
+        "```spec\n",
+        "root: main\n",
+        "elements:\n",
+        "  main:\n",
+        "    type: stack\n",
+        "    props: {}\n",
+        "    children:\n",
+        "      - heading\n",
+        "      - metric-1\n",
+        "  heading:\n",
+        "    type: heading\n",
+        "    props:\n",
+        "      text: Dashboard\n",
+        "    children: []\n",
+        "  metric-1:\n",
+        "    type: metric\n",
+        "    props:\n",
+        "      label: Users\n",
+        "      value: \"1,234\"\n",
+        "    children: []\n",
+        "```\n"
+      ]
+
+      state = YAML.stream_init()
+
+      {_final_state, all_specs} =
+        Enum.reduce(yaml_chunks, {state, []}, fn chunk, {st, specs} ->
+          {st, events} = YAML.stream_push(st, chunk)
+
+          new_specs =
+            for {:spec, spec} <- events do
+              html = render_spec(spec, streaming: true)
+              assert is_binary(html), "render_spec crashed on: #{inspect(spec)}"
+              spec
+            end
+
+          {st, specs ++ new_specs}
+        end)
+
+      assert all_specs != []
+      last_spec = List.last(all_specs)
+      assert last_spec["root"] == "main"
+      assert last_spec["elements"]["heading"]["props"]["text"] == "Dashboard"
+
+      final_html = render_spec(last_spec)
+      assert final_html =~ "Dashboard"
+      assert final_html =~ "Users"
+      assert final_html =~ "1,234"
+    end
+
+    test "renders every intermediate JSONPatch streaming spec without crashing" do
+      alias LiveRender.Format.JSONPatch
+
+      patches = [
+        "```spec\n",
+        ~s|{"op":"add","path":"/root","value":"main"}\n|,
+        ~s|{"op":"add","path":"/elements/main","value":{"type":"stack","props":{},"children":["h1"]}}\n|,
+        ~s|{"op":"add","path":"/elements/h1","value":{"type":"heading","props":{"text":"Hello"},"children":[]}}\n|,
+        "```\n"
+      ]
+
+      state = JSONPatch.stream_init()
+
+      {_final_state, all_specs} =
+        Enum.reduce(patches, {state, []}, fn chunk, {st, specs} ->
+          {st, events} = JSONPatch.stream_push(st, chunk)
+
+          new_specs =
+            for {:spec, spec} <- events do
+              html = render_spec(spec, streaming: true)
+              assert is_binary(html), "render_spec crashed on: #{inspect(spec)}"
+              spec
+            end
+
+          {st, specs ++ new_specs}
+        end)
+
+      assert all_specs != []
+      final_html = render_spec(List.last(all_specs))
+      assert final_html =~ "Hello"
     end
 
     test "renders full weather comparison spec without crashing" do
