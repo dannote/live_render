@@ -314,6 +314,38 @@ defmodule LiveRender.RendererTest do
       assert html =~ "<div"
     end
 
+    test "renders tabs with string items in tabs list (YAML streaming)" do
+      spec = %{
+        "root" => "t",
+        "elements" => %{
+          "t" => %{
+            "type" => "tabs",
+            "props" => %{"default_value" => "ny", "tabs" => ["value"]},
+            "children" => []
+          }
+        }
+      }
+
+      html = render_spec(spec, streaming: true)
+      assert html =~ "<div"
+    end
+
+    test "renders timeline with string items in items list" do
+      spec = %{
+        "root" => "t",
+        "elements" => %{
+          "t" => %{
+            "type" => "timeline",
+            "props" => %{"items" => ["title"]},
+            "children" => []
+          }
+        }
+      }
+
+      html = render_spec(spec, streaming: true)
+      assert html =~ "<div"
+    end
+
     test "renders tabs with nil tabs prop (streaming partial element)" do
       spec = %{
         "root" => "t",

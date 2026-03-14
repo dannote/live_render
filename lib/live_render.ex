@@ -157,12 +157,13 @@ defmodule LiveRender do
 
     case component_mod.validate_props(resolved) do
       {:ok, props} ->
-        props
+        sanitize_list_props(props, component_mod.component_schema())
 
       {:error, _} ->
         atomize_keys(resolved)
         |> apply_schema_defaults(component_mod.component_schema())
         |> coerce_invalid_props(component_mod.component_schema())
+        |> sanitize_list_props(component_mod.component_schema())
     end
   end
 
@@ -252,6 +253,21 @@ defmodule LiveRender do
       Map.put(props, key, spec[:default])
     else
       _ -> props
+    end
+  end
+
+  defp sanitize_list_props(props, schema) when is_list(schema) do
+    Enum.reduce(schema, props, &sanitize_list_prop/2)
+  end
+
+  defp sanitize_list_props(props, _schema), do: props
+
+  defp sanitize_list_prop({key, spec}, acc) do
+    with {:list, :map} <- spec[:type],
+         list when is_list(list) <- Map.get(acc, key) do
+      Map.put(acc, key, Enum.filter(list, &is_map/1))
+    else
+      _ -> acc
     end
   end
 end
