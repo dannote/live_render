@@ -91,9 +91,7 @@ defmodule LiveRender.Format.A2UI do
   # --- Fence processing ---
 
   defp process_fence_buffer(state, buf) do
-    {lines, remainder} = Shared.split_lines(buf)
-    {state, events} = process_lines(%{state | buffer: ""}, lines)
-    {%{state | buffer: remainder}, events}
+    Shared.process_fence_buffer(state, buf, &process_lines/2)
   end
 
   defp process_lines(state, lines) do

@@ -18,20 +18,29 @@ defmodule LiveRender.Format.Shared do
     end
   end
 
-  @doc "Detects ```spec fence opening in a buffer. Returns events and updated state fields."
-  def detect_fence(state_fields, buf) do
-    case String.split(buf, "```spec", parts: 2) do
-      [before, rest] ->
+  @doc "Detects fence opening in a buffer. Returns events and updated state fields."
+  def detect_fence(state_fields, buf, markers \\ ["```spec"]) do
+    case find_fence_marker(buf, markers) do
+      {:found, before, rest} ->
         remainder = String.trim_leading(rest, "\n")
         events = if before != "", do: [{:text, before}], else: []
         {Map.merge(state_fields, %{in_fence: true, buffer: remainder}), events}
 
-      [_] ->
+      :not_found ->
         {passthrough, held} = hold_backticks(buf)
         events = if passthrough != "", do: [{:text, passthrough}], else: []
         {Map.put(state_fields, :buffer, held), events}
     end
   end
+
+  defp find_fence_marker(buf, [marker | rest]) do
+    case String.split(buf, marker, parts: 2) do
+      [before, after_fence] -> {:found, before, after_fence}
+      [_] -> find_fence_marker(buf, rest)
+    end
+  end
+
+  defp find_fence_marker(_buf, []), do: :not_found
 
   @doc "Holds trailing backticks to avoid partial fence detection."
   def hold_backticks(buf) do
@@ -41,6 +50,13 @@ defmodule LiveRender.Format.Shared do
     else
       {buf, ""}
     end
+  end
+
+  @doc "Processes buffered fence content by splitting into lines and delegating to a line processor."
+  def process_fence_buffer(state, buf, process_lines_fn) do
+    {lines, remainder} = split_lines(buf)
+    {state, events} = process_lines_fn.(%{state | buffer: ""}, lines)
+    {%{state | buffer: remainder}, events}
   end
 
   @doc "Splits a buffer into complete lines and a remainder."

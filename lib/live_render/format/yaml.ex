@@ -60,33 +60,10 @@ if Code.ensure_loaded?(YamlElixir) do
       if state.in_fence do
         process_fence_buffer(state, buf)
       else
-        {fields, events} = detect_yaml_fence(state, buf)
+        {fields, events} = Shared.detect_fence(state, buf, @fence_markers)
         {Map.merge(state, fields), events}
       end
     end
-
-    defp detect_yaml_fence(state, buf) do
-      case find_fence(buf, @fence_markers) do
-        {:found, before, rest} ->
-          remainder = String.trim_leading(rest, "\n")
-          events = if before != "", do: [{:text, before}], else: []
-          {Map.merge(state, %{in_fence: true, buffer: remainder}), events}
-
-        :not_found ->
-          {passthrough, held} = Shared.hold_backticks(buf)
-          events = if passthrough != "", do: [{:text, passthrough}], else: []
-          {Map.put(state, :buffer, held), events}
-      end
-    end
-
-    defp find_fence(buf, [marker | rest]) do
-      case String.split(buf, marker, parts: 2) do
-        [before, after_fence] -> {:found, before, after_fence}
-        [_] -> find_fence(buf, rest)
-      end
-    end
-
-    defp find_fence(_buf, []), do: :not_found
 
     @impl true
     def stream_flush(state) do

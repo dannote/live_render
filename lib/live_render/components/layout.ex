@@ -13,6 +13,7 @@ defmodule LiveRender.Components.Stack do
     slots: [:inner_block]
 
   use Phoenix.Component
+  import LiveRender.Components.LayoutHelpers, only: [gap_class: 1]
 
   def render(assigns) do
     ~H"""
@@ -24,16 +25,6 @@ defmodule LiveRender.Components.Stack do
 
   defp direction_class(:horizontal), do: "flex-row flex-wrap"
   defp direction_class(_), do: "flex-col"
-
-  defp gap_class(0), do: "gap-0"
-  defp gap_class(1), do: "gap-1"
-  defp gap_class(2), do: "gap-2"
-  defp gap_class(3), do: "gap-3"
-  defp gap_class(4), do: "gap-4"
-  defp gap_class(5), do: "gap-5"
-  defp gap_class(6), do: "gap-6"
-  defp gap_class(8), do: "gap-8"
-  defp gap_class(_), do: "gap-3"
 end
 
 defmodule LiveRender.Components.Card do
@@ -79,6 +70,7 @@ defmodule LiveRender.Components.Grid do
     slots: [:inner_block]
 
   use Phoenix.Component
+  import LiveRender.Components.LayoutHelpers, only: [gap_class: 1]
 
   def render(assigns) do
     ~H"""
@@ -95,16 +87,6 @@ defmodule LiveRender.Components.Grid do
   defp columns_class(5), do: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-5"
   defp columns_class(6), do: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-6"
   defp columns_class(_), do: "grid-cols-1 sm:grid-cols-2"
-
-  defp gap_class(0), do: "gap-0"
-  defp gap_class(1), do: "gap-1"
-  defp gap_class(2), do: "gap-2"
-  defp gap_class(3), do: "gap-3"
-  defp gap_class(4), do: "gap-4"
-  defp gap_class(5), do: "gap-5"
-  defp gap_class(6), do: "gap-6"
-  defp gap_class(8), do: "gap-8"
-  defp gap_class(_), do: "gap-3"
 end
 
 defmodule LiveRender.Components.Separator do
