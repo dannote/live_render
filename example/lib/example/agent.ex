@@ -28,7 +28,7 @@ defmodule Example.Agent do
     "For educational prompts ('teach me about', 'explain', 'what is'), use a mix of Callout, Accordion, Timeline to make the content visually rich."
   ]
 
-  @format Application.compile_env(:example, :format, LiveRender.Format.JSONPatch)
+  @default_format Application.compile_env(:example, :format, LiveRender.Format.JSONPatch)
 
   @doc """
   Starts a streamed conversation with the ReAct agent.
@@ -43,7 +43,7 @@ defmodule Example.Agent do
   """
   def chat(prompt, pid, opts \\ []) do
     model = Keyword.get(opts, :model, default_model())
-    format = Keyword.get(opts, :format, @format)
+    format = Keyword.get(opts, :format, @default_format)
 
     Task.start(fn ->
       config = %{

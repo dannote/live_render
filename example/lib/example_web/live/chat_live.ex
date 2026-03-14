@@ -16,6 +16,13 @@ defmodule ExampleWeb.ChatLive do
     "get_hackernews_top" => {"Loading Hacker News", "Loaded Hacker News"}
   }
 
+  @formats [
+    {"jsonl", LiveRender.Format.JSONPatch, "JSONL patches"},
+    {"json", LiveRender.Format.JSONObject, "JSON object"},
+    {"yaml", LiveRender.Format.YAML, "YAML"},
+    {"olang", LiveRender.Format.OpenUILang, "OpenUI Lang"}
+  ]
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -26,8 +33,15 @@ defmodule ExampleWeb.ChatLive do
        current_spec: %{}, spec_version: 0,
        tool_calls: [],
        streaming?: false,
-       form: to_form(%{"prompt" => ""})
+       form: to_form(%{"prompt" => ""}),
+       format: "jsonl",
+       formats: @formats
      )}
+  end
+
+  @impl true
+  def handle_event("set_format", %{"format" => format_key}, socket) do
+    {:noreply, assign(socket, :format, format_key)}
   end
 
   @impl true
@@ -38,8 +52,9 @@ defmodule ExampleWeb.ChatLive do
       content: prompt
     }
 
+    format_mod = format_module(socket.assigns.format)
     context = build_context(socket.assigns.messages)
-    Example.Agent.chat(prompt, self(), context: context)
+    Example.Agent.chat(prompt, self(), context: context, format: format_mod)
 
     {:noreply,
      assign(socket,
@@ -140,6 +155,12 @@ defmodule ExampleWeb.ChatLive do
   defp tool_label(name, :running), do: elem(Map.get(@tool_labels, name, {name, name}), 0)
   defp tool_label(name, _), do: elem(Map.get(@tool_labels, name, {name, name}), 1)
 
+  defp format_module(key) do
+    Enum.find_value(@formats, LiveRender.Format.JSONPatch, fn {k, mod, _} ->
+      if k == key, do: mod
+    end)
+  end
+
   @impl true
   def render(assigns) do
     assigns = assign(assigns, :suggestions, @suggestions)
@@ -149,7 +170,24 @@ defmodule ExampleWeb.ChatLive do
       <%!-- Header --%>
       <header class="border-b border-border px-6 py-3 flex items-center justify-between shrink-0">
         <h1 class="text-lg font-semibold">LiveRender Chat</h1>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center rounded-md border border-border text-[11px] font-mono overflow-hidden">
+            <button
+              :for={{key, _mod, _label} <- @formats}
+              phx-click="set_format"
+              phx-value-format={key}
+              disabled={@streaming?}
+              class={[
+                "px-2 py-1 transition-colors disabled:cursor-not-allowed",
+                if(@format == key,
+                  do: "bg-muted text-foreground",
+                  else: "text-muted-foreground hover:text-foreground"
+                )
+              ]}
+            >
+              {key}
+            </button>
+          </div>
           <button
             :if={@messages != []}
             phx-click="clear"
