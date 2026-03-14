@@ -30,6 +30,7 @@ defmodule ExampleWeb.ChatLive do
        page_title: "LiveRender Chat",
        messages: [],
        current_text: "",
+       after_text: "",
        current_spec: %{}, spec_version: 0,
        tool_calls: [],
        streaming?: false,
@@ -60,6 +61,7 @@ defmodule ExampleWeb.ChatLive do
      assign(socket,
        messages: socket.assigns.messages ++ [user_msg],
        current_text: "",
+       after_text: "",
        current_spec: %{}, spec_version: 0,
        tool_calls: [],
        streaming?: true,
@@ -78,6 +80,7 @@ defmodule ExampleWeb.ChatLive do
      assign(socket,
        messages: [],
        current_text: "",
+       after_text: "",
        current_spec: %{}, spec_version: 0,
        tool_calls: [],
        streaming?: false,
@@ -87,7 +90,11 @@ defmodule ExampleWeb.ChatLive do
 
   @impl true
   def handle_info({:live_render, :text_chunk, token}, socket) do
-    {:noreply, assign(socket, :current_text, socket.assigns.current_text <> token)}
+    if socket.assigns.current_spec != %{} do
+      {:noreply, assign(socket, :after_text, socket.assigns.after_text <> token)}
+    else
+      {:noreply, assign(socket, :current_text, socket.assigns.current_text <> token)}
+    end
   end
 
   def handle_info({:live_render, :tool_start, name}, socket) do
@@ -111,12 +118,14 @@ defmodule ExampleWeb.ChatLive do
   end
 
   def handle_info({:live_render, :done}, socket) do
-    text = strip_spec_fence(socket.assigns.current_text)
+    before_text = strip_spec_fence(socket.assigns.current_text)
+    after_text = strip_spec_fence(socket.assigns.after_text)
 
     assistant_msg = %{
       id: System.unique_integer([:positive]),
       role: :assistant,
-      content: text,
+      content: before_text,
+      after_content: after_text,
       spec: socket.assigns.current_spec,
       tool_calls: socket.assigns.tool_calls
     }
@@ -125,6 +134,7 @@ defmodule ExampleWeb.ChatLive do
      assign(socket,
        messages: socket.assigns.messages ++ [assistant_msg],
        current_text: "",
+       after_text: "",
        current_spec: %{}, spec_version: 0,
        tool_calls: [],
        streaming?: false
@@ -248,7 +258,7 @@ defmodule ExampleWeb.ChatLive do
                 </div>
               </div>
 
-              <%!-- Text content --%>
+              <%!-- Text content (before spec) --%>
               <div :if={msg.content != ""} class="text-sm leading-relaxed">
                 <PhoenixStreamdown.markdown content={msg.content} id={"msg-#{msg.id}"} block_class="mb-3 last:mb-0" />
               </div>
@@ -256,6 +266,11 @@ defmodule ExampleWeb.ChatLive do
               <%!-- Rendered spec --%>
               <div :if={Map.get(msg, :spec, %{}) != %{}} class="w-full">
                 <LiveRender.render spec={msg.spec} catalog={Example.Catalog} id={"spec-#{msg.id}"} />
+              </div>
+
+              <%!-- Text content (after spec) --%>
+              <div :if={Map.get(msg, :after_content, "") != ""} class="text-sm leading-relaxed">
+                <PhoenixStreamdown.markdown content={msg.after_content} id={"msg-after-#{msg.id}"} block_class="mb-3 last:mb-0" />
               </div>
             </div>
           </div>
@@ -275,7 +290,7 @@ defmodule ExampleWeb.ChatLive do
               Thinking...
             </div>
 
-            <%!-- Streaming text --%>
+            <%!-- Streaming text (before spec) --%>
             <div :if={@current_text != ""} class="text-sm leading-relaxed">
               <PhoenixStreamdown.markdown content={strip_spec_fence(@current_text)} streaming animate="fadeIn" id="streaming" block_class="mb-3 last:mb-0" />
             </div>
@@ -283,6 +298,11 @@ defmodule ExampleWeb.ChatLive do
             <%!-- Streaming spec --%>
             <div :if={@current_spec != %{}} class="w-full">
               <LiveRender.render spec={@current_spec} catalog={Example.Catalog} streaming id="streaming-spec" />
+            </div>
+
+            <%!-- Streaming text (after spec) --%>
+            <div :if={@after_text != ""} class="text-sm leading-relaxed">
+              <PhoenixStreamdown.markdown content={strip_spec_fence(@after_text)} streaming animate="fadeIn" id="streaming-after" block_class="mb-3 last:mb-0" />
             </div>
           </div>
 
