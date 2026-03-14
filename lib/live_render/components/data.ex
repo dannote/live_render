@@ -103,8 +103,13 @@ defmodule LiveRender.Components.Table do
 
   def render(assigns) do
     assigns =
-      update(assigns, :data, fn
+      assigns
+      |> update(:data, fn
         data when is_list(data) -> data
+        _ -> []
+      end)
+      |> update(:columns, fn
+        cols when is_list(cols) -> cols
         _ -> []
       end)
 

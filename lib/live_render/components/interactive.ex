@@ -54,9 +54,10 @@ defmodule LiveRender.Components.Tabs do
   use Phoenix.Component
 
   def render(assigns) do
-    default = assigns.default_value || (List.first(assigns.tabs) || %{})["value"]
+    tabs = assigns.tabs || []
+    default = assigns.default_value || (List.first(tabs) || %{})["value"]
     tab_id = "tabs-#{System.unique_integer([:positive])}"
-    assigns = assign(assigns, default: default, tab_id: tab_id)
+    assigns = assign(assigns, default: default, tab_id: tab_id, tabs: tabs)
 
     ~H"""
     <div id={@tab_id} phx-hook="LiveRenderTabs" data-active={@default}>

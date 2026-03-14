@@ -55,6 +55,8 @@ defmodule LiveRender.Components.Timeline do
   use Phoenix.Component
 
   def render(assigns) do
+    assigns = update(assigns, :items, fn items -> if is_list(items), do: items, else: [] end)
+
     ~H"""
     <div class="relative pl-8">
       <div class="absolute left-[5.5px] top-3 bottom-3 w-px bg-border" />
@@ -100,6 +102,8 @@ defmodule LiveRender.Components.Accordion do
   use Phoenix.Component
 
   def render(assigns) do
+    assigns = update(assigns, :items, fn items -> if is_list(items), do: items, else: [] end)
+
     ~H"""
     <div class="w-full">
       <details :for={item <- @items} class="group border-b border-border">

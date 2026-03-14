@@ -314,6 +314,30 @@ defmodule LiveRender.RendererTest do
       assert html =~ "<div"
     end
 
+    test "renders tabs with nil tabs prop (streaming partial element)" do
+      spec = %{
+        "root" => "t",
+        "elements" => %{
+          "t" => %{"type" => "tabs", "props" => %{}, "children" => []}
+        }
+      }
+
+      html = render_spec(spec, streaming: true)
+      assert html =~ "<div"
+    end
+
+    test "renders tabs with missing props entirely" do
+      spec = %{
+        "root" => "t",
+        "elements" => %{
+          "t" => %{"type" => "tabs", "children" => []}
+        }
+      }
+
+      html = render_spec(spec, streaming: true)
+      assert html =~ "<div"
+    end
+
     test "survives spec with string element value (YAML incremental parse)" do
       spec = %{"root" => "main", "elements" => %{"main" => "type"}}
 
