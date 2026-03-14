@@ -167,13 +167,8 @@ if Code.ensure_loaded?(YamlElixir) do
 
     # --- One-shot parsing ---
 
-    @spec_fence_regex ~r/```(?:spec|yaml)\n([\s\S]*?)(?:```|$)/
-
     defp extract_fence(text) do
-      case Regex.run(@spec_fence_regex, text) do
-        [_, content] -> {:ok, String.trim(content)}
-        nil -> :none
-      end
+      Shared.extract_fence(text, @fence_markers)
     end
 
     defp parse_yaml(content, current_spec) do

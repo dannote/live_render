@@ -50,6 +50,30 @@ defmodule LiveRender.Format.Shared do
     {complete, remainder}
   end
 
+  @doc """
+  Extracts content from inside a code fence in a complete text.
+
+  Tries each marker in order. Returns the content between the opening fence
+  and the closing ``` (or end of string).
+  """
+  def extract_fence(text, markers \\ ["```spec"]) do
+    Enum.find_value(markers, :none, &try_extract_marker(text, &1))
+  end
+
+  defp try_extract_marker(text, marker) do
+    case String.split(text, marker <> "\n", parts: 2) do
+      [_before, rest] -> {:ok, extract_fence_content(rest)}
+      [_] -> nil
+    end
+  end
+
+  defp extract_fence_content(rest) do
+    case String.split(rest, "```", parts: 2) do
+      [inner, _] -> String.trim(inner)
+      [inner] -> String.trim(inner)
+    end
+  end
+
   defp count_trailing_backticks(buf) do
     buf
     |> String.reverse()

@@ -81,13 +81,8 @@ defmodule LiveRender.Format.JSONObject do
     end
   end
 
-  @spec_fence_regex ~r/```spec\n([\s\S]*?)(?:```|$)/
-
   defp extract_fence(text) do
-    case Regex.run(@spec_fence_regex, text) do
-      [_, content] -> {:ok, String.trim(content)}
-      nil -> :none
-    end
+    Shared.extract_fence(text)
   end
 
   defp parse_json(json, current_spec) do

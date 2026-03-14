@@ -101,13 +101,8 @@ defmodule LiveRender.Format.JSONPatch do
 
   # --- One-shot parsing ---
 
-  @spec_fence_regex ~r/```spec\n([\s\S]*?)(?:```|$)/
-
   defp extract_fence(text) do
-    case Regex.run(@spec_fence_regex, text) do
-      [_, content] -> {:ok, String.trim(content)}
-      nil -> :none
-    end
+    Shared.extract_fence(text)
   end
 
   defp parse_jsonl(content, current_spec) do
