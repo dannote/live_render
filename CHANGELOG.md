@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 (2026-03-14)
+
+### Features
+
+- **`LiveRender.Format.YAML`** — YAML wire format with progressive streaming. The LLM outputs YAML inside a code fence (`` ```spec `` or `` ```yaml ``), and the streaming parser incrementally re-parses on each newline, emitting `{:spec, spec}` events as the structure grows. Requires `{:yaml_elixir, "~> 2.12"}` (optional dependency).
+- **Merge edit mode** — multi-turn spec refinement via RFC 7396 JSON Merge Patch. Pass `:current_spec` to `Generate.stream_spec/3` or any format's prompt/parse/stream_init opts, and the LLM outputs only changed keys which are deep-merged into the existing spec. Supported by JSONPatch (via `__lr_edit` flag), JSONObject, and YAML formats.
+- **`LiveRender.SpecMerge`** — RFC 7396 deep merge: `nil` deletes keys, arrays replace atomically, maps recurse.
+- **Shared fence extraction** — `Shared.extract_fence/2` replaces duplicated regex across all five formats with a single `String.split`-based function that accepts a list of fence markers.
+
+### Fixes
+
+- **YAML streaming spec validation** — only emit specs where `root` is a string, `elements` is a non-empty map, every element value is a map with a string `type`, and `props` is a map or nil. Prevents crashes from intermediate YAML parse states like `%{"main" => "type"}`.
+- **Renderer defensive guards** — `get_node` returns nil for non-map element values; `children` coerced to `[]` when not a list; `props` coerced to `%{}` when not a map.
+- **List prop sanitization** — `sanitize_list_props` filters non-map items from `{:list, :map}` schema props after validation, preventing crashes when YAML streaming produces intermediate list values like `["value"]` instead of `[%{"value" => "..."}]`.
+- **Component nil guards** — Tabs, Timeline, Accordion, and Table all guard against nil list props (`tabs`, `items`, `columns`) during streaming.
+
 ## 0.4.0 (2026-03-12)
 
 ### Features

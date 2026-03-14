@@ -12,7 +12,7 @@ Inspired by Vercel's [json-render](https://github.com/vercel-labs/json-render), 
 - **Server-side** — specs stay on the server; no JSON runtime shipped to the client
 - **Streaming** — stable elements freeze with `phx-update="ignore"`, only the active node re-renders
 - **Progressive** — patch mode builds the UI element-by-element as the LLM streams
-- **Multi-format** — JSON patches, JSON objects, or [OpenUI Lang](#openui-lang) (~50% fewer tokens)
+- **Multi-format** — JSON patches, JSON objects, [YAML](#yaml), or [OpenUI Lang](#openui-lang) (~50% fewer tokens)
 - **Batteries included** — 18 built-in components ready to use
 - **Bring your own LLM** — works with ReqLLM, Jido, or any client that produces a spec map
 
@@ -77,7 +77,7 @@ Or bring your own client — anything that produces a spec map works.
 ```elixir
 def deps do
   [
-    {:live_render, "~> 0.3"}
+    {:live_render, "~> 0.5"}
   ]
 end
 ```
@@ -87,6 +87,7 @@ Optional dependencies unlock extra features:
 | Dependency | Unlocks |
 |---|---|
 | `{:req_llm, "~> 1.6"}` | `LiveRender.Generate` — streaming/one-shot spec generation |
+| `{:yaml_elixir, "~> 2.12"}` | `LiveRender.Format.YAML` — YAML wire format |
 | `{:nimble_options, "~> 1.0"}` | Keyword list schema validation with defaults and coercion |
 | `{:json_spec, "~> 1.1"}` | Elixir typespec-style schemas that compile to JSON Schema |
 
@@ -98,6 +99,7 @@ LiveRender supports multiple spec formats through the `LiveRender.Format` behavi
 |---|---|---|---|
 | **JSON Patch** | `LiveRender.Format.JSONPatch` | High | Progressive streaming — UI appears element-by-element |
 | **JSON Object** | `LiveRender.Format.JSONObject` | High | Simple one-shot generation |
+| **YAML** | `LiveRender.Format.YAML` | **~30% less** | Natural for LLMs, progressive streaming, fewer syntax errors |
 | **OpenUI Lang** | `LiveRender.Format.OpenUILang` | **~50% less** | Token-sensitive workloads, fast models |
 | **A2UI** | `LiveRender.Format.A2UI` | High | Interop with [A2UI](https://github.com/google/A2UI) agents and transports |
 
@@ -194,12 +196,71 @@ Google's [A2UI protocol](https://github.com/google/A2UI) — a JSONL stream of e
 
 A2UI data bindings (`{"path": "/..."}`) are automatically converted to LiveRender's `{"$state": "/..."}` expressions. Component names use PascalCase and are mapped to catalog entries via snake_case conversion.
 
+### YAML
+
+YAML is more natural for LLMs — no quotes on keys, no commas, no braces — and produces fewer syntax errors during streaming. The parser incrementally re-parses on each newline and emits progressive updates:
+
+    ```yaml
+    root: main
+    elements:
+      main:
+        type: stack
+        props:
+          direction: vertical
+        children:
+          - heading
+          - metric-1
+      heading:
+        type: heading
+        props:
+          text: Weather Dashboard
+        children: []
+      metric-1:
+        type: metric
+        props:
+          label: Temperature
+          value: "72°F"
+        children: []
+    ```
+
+Accepts both `` ```spec `` and `` ```yaml `` fences. Requires `{:yaml_elixir, "~> 2.12"}`.
+
+### Edit Mode (Merge)
+
+All JSON-based formats and YAML support multi-turn editing. Pass `:current_spec` and the LLM outputs only changed keys, deep-merged via RFC 7396:
+
+```elixir
+LiveRender.Generate.stream_spec(model, "change the title to Welcome",
+  catalog: MyApp.AI.Catalog,
+  pid: self(),
+  format: LiveRender.Format.YAML,
+  current_spec: existing_spec
+)
+```
+
+For YAML, the LLM outputs a partial spec:
+
+    ```yaml
+    elements:
+      heading:
+        props:
+          text: Welcome
+    ```
+
+For JSONPatch, it outputs a merge line with `__lr_edit`:
+
+    ```spec
+    {"__lr_edit":true,"elements":{"heading":{"props":{"text":"Welcome"}}}}
+    ```
+
+Unmentioned keys are preserved. Set a key to `null`/`nil` to delete it.
+
 ### Custom Formats
 
 Implement the `LiveRender.Format` behaviour to add your own:
 
 ```elixir
-defmodule MyApp.Format.YAML do
+defmodule MyApp.Format.Custom do
   @behaviour LiveRender.Format
 
   @impl true
@@ -344,7 +405,7 @@ The [`example/`](example/) directory contains a chat application:
 
 - Tools: weather, crypto, GitHub, Hacker News
 - Jido ReAct agent with streaming
-- Configurable format (OpenUI Lang by default in dev)
+- Runtime format selector (JSONL, JSON, YAML, OpenUI Lang)
 - PhoenixStreamdown for streaming markdown with word-level animations
 - OpenRouter and Anthropic support
 
