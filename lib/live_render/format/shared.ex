@@ -80,6 +80,23 @@ defmodule LiveRender.Format.Shared do
     |> String.trim()
   end
 
+  @doc "Appends edit mode sections to a base prompt when current_spec is present."
+  def with_edit_mode(base_prompt, opts, edit_section_fn) do
+    current_spec = Keyword.get(opts, :current_spec)
+
+    if current_spec && current_spec != %{} do
+      current_json = Jason.encode!(current_spec, pretty: true)
+
+      base_prompt <>
+        "\n\n" <>
+        edit_section_fn.() <>
+        "\n\n" <>
+        "CURRENT UI STATE (already loaded, DO NOT recreate existing elements):\n```\n#{current_json}\n```\n"
+    else
+      base_prompt
+    end
+  end
+
   @doc "Formats the components section of the system prompt."
   def components_section(component_map) do
     component_map
@@ -171,6 +188,83 @@ defmodule LiveRender.Format.Shared do
   end
 
   defp format_properties(_), do: "  (no props)"
+
+  @doc "Builds the YAML-format prompt preamble with components, actions, rules."
+  def yaml_prompt(format_section, edit_section, component_map, actions, opts) do
+    custom_rules = Keyword.get(opts, :custom_rules, [])
+    current_spec = Keyword.get(opts, :current_spec)
+
+    edit_part =
+      if current_spec && current_spec != %{} do
+        current_yaml = serialize_spec_yaml(current_spec)
+
+        "\n\n#{edit_section}\n\n" <>
+          "CURRENT UI STATE (already loaded, DO NOT recreate existing elements):\n```\n#{current_yaml}\n```\n"
+      else
+        ""
+      end
+
+    """
+    You generate UI specs as YAML. Use ONLY these components and actions.
+
+    #{format_section}
+    #{data_binding_section()}
+    #{visibility_section()}
+    ## Components
+
+    #{components_section(component_map)}
+    #{actions_section(actions)}#{edit_part}#{rules_section(custom_rules)}\
+    """
+    |> String.trim()
+  end
+
+  defp serialize_spec_yaml(spec) do
+    spec
+    |> Jason.encode!()
+    |> Jason.decode!()
+    |> yaml_serialize()
+    |> String.trim()
+  end
+
+  defp yaml_serialize(data, indent \\ 0) do
+    pad = String.duplicate("  ", indent)
+
+    case data do
+      map when is_map(map) and map_size(map) == 0 ->
+        "{}"
+
+      map when is_map(map) ->
+        map
+        |> Enum.sort_by(fn {k, _} -> k end)
+        |> Enum.map_join("\n", &yaml_entry(&1, pad, indent))
+
+      _ ->
+        "#{pad}#{yaml_value(data)}"
+    end
+  end
+
+  defp yaml_entry({k, nested}, pad, indent) when is_map(nested) and map_size(nested) > 0 do
+    "#{pad}#{k}:\n#{yaml_serialize(nested, indent + 1)}"
+  end
+
+  defp yaml_entry({k, [_ | _] = list}, pad, _indent) do
+    items = Enum.map_join(list, "\n", &"#{pad}  - #{yaml_value(&1)}")
+    "#{pad}#{k}:\n#{items}"
+  end
+
+  defp yaml_entry({k, v}, pad, _indent) do
+    "#{pad}#{k}: #{yaml_value(v)}"
+  end
+
+  defp yaml_value(nil), do: "null"
+  defp yaml_value(true), do: "true"
+  defp yaml_value(false), do: "false"
+  defp yaml_value(v) when is_integer(v), do: Integer.to_string(v)
+  defp yaml_value(v) when is_float(v), do: Float.to_string(v)
+  defp yaml_value(v) when is_binary(v), do: inspect(v)
+  defp yaml_value(list) when is_list(list), do: Jason.encode!(list)
+  defp yaml_value(map) when is_map(map), do: Jason.encode!(map)
+  defp yaml_value(v), do: inspect(v)
 
   defp format_type(%{"type" => "string", "enum" => values}) do
     Enum.join(values, " | ")

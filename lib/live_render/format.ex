@@ -12,6 +12,13 @@ defmodule LiveRender.Format do
   - `LiveRender.Format.JSONObject` — single JSON object with root/elements/state
   - `LiveRender.Format.OpenUILang` — compact line-oriented DSL (~50% fewer tokens)
   - `LiveRender.Format.A2UI` — Google's A2UI protocol (JSONL envelopes, interoperable)
+  - `LiveRender.Format.YAML` — YAML wire format (requires `:yaml_elixir` dependency)
+
+  ## Edit modes
+
+  All JSON-based formats and YAML support multi-turn editing via RFC 7396 merge
+  semantics. Pass `:current_spec` in opts to enable: the prompt instructs the LLM
+  to output only changed keys, which are deep-merged into the existing spec.
   """
 
   @type spec :: %{String.t() => term()}

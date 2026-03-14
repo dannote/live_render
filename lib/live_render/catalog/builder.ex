@@ -60,4 +60,5 @@ defmodule LiveRender.Catalog.Builder do
   defp mode_to_format(:object), do: LiveRender.Format.JSONObject
   defp mode_to_format(:openui_lang), do: LiveRender.Format.OpenUILang
   defp mode_to_format(:a2ui), do: LiveRender.Format.A2UI
+  defp mode_to_format(:yaml), do: LiveRender.Format.YAML
 end

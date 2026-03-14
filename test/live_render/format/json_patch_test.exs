@@ -112,4 +112,115 @@ defmodule LiveRender.Format.JSONPatchTest do
       assert spec["root"] == "x"
     end
   end
+
+  describe "edit mode (merge)" do
+    test "prompt includes edit instructions when current_spec is provided" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "heading", "props" => %{"text" => "Hi"}, "children" => []}
+        }
+      }
+
+      prompt = JSONPatch.prompt(%{}, [], current_spec: current_spec)
+      assert prompt =~ "__lr_edit"
+      assert prompt =~ "Editing existing specs"
+      assert prompt =~ "CURRENT UI STATE"
+    end
+
+    test "prompt omits edit instructions without current_spec" do
+      prompt = JSONPatch.prompt(%{}, [], [])
+      refute prompt =~ "__lr_edit"
+      refute prompt =~ "Editing existing specs"
+    end
+
+    test "parse handles merge edit line in fence" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "stack", "props" => %{}, "children" => ["heading"]},
+          "heading" => %{"type" => "heading", "props" => %{"text" => "Old"}, "children" => []}
+        }
+      }
+
+      text = """
+      ```spec
+      {"__lr_edit":true,"elements":{"heading":{"props":{"text":"New"}}}}
+      ```
+      """
+
+      assert {:ok, spec} = JSONPatch.parse(text, current_spec: current_spec)
+      assert spec["root"] == "main"
+      assert spec["elements"]["heading"]["props"]["text"] == "New"
+      assert spec["elements"]["heading"]["type"] == "heading"
+      assert spec["elements"]["main"]["type"] == "stack"
+    end
+
+    test "streaming handles __lr_edit merge lines" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "stack", "props" => %{}, "children" => ["heading"]},
+          "heading" => %{"type" => "heading", "props" => %{"text" => "Old"}, "children" => []}
+        }
+      }
+
+      state = JSONPatch.stream_init(current_spec: current_spec)
+      {state, _} = JSONPatch.stream_push(state, "```spec\n")
+
+      {_state, events} =
+        JSONPatch.stream_push(
+          state,
+          ~s|{"__lr_edit":true,"elements":{"heading":{"props":{"text":"New"}}}}\n|
+        )
+
+      assert [{:spec, spec}] = events
+      assert spec["root"] == "main"
+      assert spec["elements"]["heading"]["props"]["text"] == "New"
+      assert spec["elements"]["heading"]["type"] == "heading"
+    end
+
+    test "streaming supports mixing patches and merge edits" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "stack", "props" => %{}, "children" => ["heading"]},
+          "heading" => %{"type" => "heading", "props" => %{"text" => "Old"}, "children" => []}
+        }
+      }
+
+      state = JSONPatch.stream_init(current_spec: current_spec)
+      {state, _} = JSONPatch.stream_push(state, "```spec\n")
+
+      # Merge edit
+      {state, _} =
+        JSONPatch.stream_push(
+          state,
+          ~s|{"__lr_edit":true,"elements":{"heading":{"props":{"text":"New"}}}}\n|
+        )
+
+      # Then a regular patch to add an element
+      {_state, events} =
+        JSONPatch.stream_push(
+          state,
+          ~s|{"op":"add","path":"/elements/metric","value":{"type":"metric","props":{"label":"Users"},"children":[]}}\n|
+        )
+
+      assert [{:spec, spec}] = events
+      assert spec["elements"]["heading"]["props"]["text"] == "New"
+      assert spec["elements"]["metric"]["type"] == "metric"
+    end
+
+    test "stream_init seeds spec from current_spec" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "heading", "props" => %{}, "children" => []}
+        }
+      }
+
+      state = JSONPatch.stream_init(current_spec: current_spec)
+      assert state.spec["root"] == "main"
+    end
+  end
 end

@@ -80,4 +80,85 @@ defmodule LiveRender.Format.JSONObjectTest do
       assert spec["root"] == "a"
     end
   end
+
+  describe "edit mode (merge)" do
+    test "prompt includes edit instructions when current_spec is provided" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "heading", "props" => %{"text" => "Hi"}, "children" => []}
+        }
+      }
+
+      prompt = JSONObject.prompt(%{}, [], current_spec: current_spec)
+      assert prompt =~ "Editing existing specs"
+      assert prompt =~ "CURRENT UI STATE"
+    end
+
+    test "parse handles merge edit against current_spec" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "stack", "props" => %{}, "children" => ["heading"]},
+          "heading" => %{"type" => "heading", "props" => %{"text" => "Old"}, "children" => []}
+        }
+      }
+
+      text = """
+      ```spec
+      {"elements":{"heading":{"props":{"text":"New"}}}}
+      ```
+      """
+
+      assert {:ok, spec} = JSONObject.parse(text, current_spec: current_spec)
+      assert spec["root"] == "main"
+      assert spec["elements"]["heading"]["props"]["text"] == "New"
+      assert spec["elements"]["heading"]["type"] == "heading"
+    end
+
+    test "streaming handles merge edit with current_spec" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "stack", "props" => %{}, "children" => ["heading"]},
+          "heading" => %{"type" => "heading", "props" => %{"text" => "Old"}, "children" => []}
+        }
+      }
+
+      state = JSONObject.stream_init(current_spec: current_spec)
+      {state, _} = JSONObject.stream_push(state, "```spec\n")
+
+      {_state, events} =
+        JSONObject.stream_push(
+          state,
+          ~s|{"elements":{"heading":{"props":{"text":"New"}}}}\n```|
+        )
+
+      assert [{:spec, spec}] = events
+      assert spec["root"] == "main"
+      assert spec["elements"]["heading"]["props"]["text"] == "New"
+      assert spec["elements"]["heading"]["type"] == "heading"
+    end
+
+    test "stream_flush handles merge edit with current_spec" do
+      current_spec = %{
+        "root" => "main",
+        "elements" => %{
+          "main" => %{"type" => "heading", "props" => %{}, "children" => []}
+        }
+      }
+
+      state = JSONObject.stream_init(current_spec: current_spec)
+      {state, _} = JSONObject.stream_push(state, "```spec\n")
+
+      {state, _} =
+        JSONObject.stream_push(state, ~s|{"elements":{"main":{"props":{"text":"Updated"}}|)
+
+      {_state, events} = JSONObject.stream_flush(state)
+      assert [{:spec, spec}] = events
+      assert spec["root"] == "main"
+      assert spec["elements"]["main"]["props"]["text"] == "Updated"
+      assert spec["elements"]["main"]["type"] == "heading"
+    end
+  end
 end

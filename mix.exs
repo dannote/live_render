@@ -40,6 +40,7 @@ defmodule LiveRender.MixProject do
       {:phoenix_live_view, "~> 1.0"},
       {:phoenix_html, "~> 4.0"},
       {:jason, "~> 1.4"},
+      {:yaml_elixir, "~> 2.12", optional: true},
       {:json_spec, "~> 1.1", optional: true},
       {:nimble_options, "~> 1.0", optional: true},
       {:req_llm, "~> 1.6", optional: true},

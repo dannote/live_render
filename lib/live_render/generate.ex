@@ -83,6 +83,7 @@ if Code.ensure_loaded?(ReqLLM) do
       * `:model_opts` — extra options passed to `ReqLLM.stream_text/3` (temperature, max_tokens, etc.)
       * `:context` — prior conversation messages as `ReqLLM.Context` list
       * `:custom_rules` — additional rules for the system prompt
+      * `:current_spec` — existing spec map for multi-turn editing (merge mode)
     """
     @spec stream_spec(String.t(), String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
     def stream_spec(model, prompt, opts) do
@@ -93,15 +94,16 @@ if Code.ensure_loaded?(ReqLLM) do
       model_opts = Keyword.get(opts, :model_opts, [])
       context = Keyword.get(opts, :context, [])
       custom_rules = Keyword.get(opts, :custom_rules, [])
+      current_spec = Keyword.get(opts, :current_spec)
 
-      system = build_system_prompt(catalog, format, custom_rules)
+      system = build_system_prompt(catalog, format, custom_rules, current_spec)
       messages = build_messages(system, context, prompt)
 
       req_opts =
         model_opts
         |> Keyword.put_new(:tools, build_tools(tools))
 
-      format_opts = format_init_opts(format, catalog)
+      format_opts = format_init_opts(format, catalog, current_spec)
 
       Task.start(fn ->
         run_stream(model, messages, req_opts, format, format_opts, pid)
@@ -126,8 +128,9 @@ if Code.ensure_loaded?(ReqLLM) do
       model_opts = Keyword.get(opts, :model_opts, [])
       context = Keyword.get(opts, :context, [])
       custom_rules = Keyword.get(opts, :custom_rules, [])
+      current_spec = Keyword.get(opts, :current_spec)
 
-      system = build_system_prompt(catalog, format, custom_rules)
+      system = build_system_prompt(catalog, format, custom_rules, current_spec)
       messages = build_messages(system, context, prompt)
 
       req_opts =
@@ -137,7 +140,7 @@ if Code.ensure_loaded?(ReqLLM) do
       case ReqLLM.generate_text(model, messages, req_opts) do
         {:ok, response} ->
           text = ReqLLM.Response.text(response)
-          parse_opts = format_init_opts(format, catalog)
+          parse_opts = format_init_opts(format, catalog, current_spec)
           format.parse(text, parse_opts)
 
         {:error, _} = error ->
@@ -145,8 +148,18 @@ if Code.ensure_loaded?(ReqLLM) do
       end
     end
 
-    defp build_system_prompt(catalog, format, custom_rules) do
-      catalog.system_prompt(format: format, custom_rules: custom_rules) <>
+    defp build_system_prompt(catalog, format, custom_rules, current_spec) do
+      prompt_opts =
+        [format: format, custom_rules: custom_rules]
+        |> then(fn opts ->
+          if current_spec && current_spec != %{} do
+            Keyword.put(opts, :current_spec, current_spec)
+          else
+            opts
+          end
+        end)
+
+      catalog.system_prompt(prompt_opts) <>
         """
 
 
@@ -179,15 +192,20 @@ if Code.ensure_loaded?(ReqLLM) do
       end)
     end
 
-    defp format_init_opts(LiveRender.Format.OpenUILang, catalog) do
+    defp format_init_opts(LiveRender.Format.OpenUILang, catalog, _current_spec) do
       [catalog: catalog.components()]
     end
 
-    defp format_init_opts(LiveRender.Format.A2UI, catalog) do
+    defp format_init_opts(LiveRender.Format.A2UI, catalog, _current_spec) do
       [catalog: catalog.components()]
     end
 
-    defp format_init_opts(_format, _catalog), do: []
+    defp format_init_opts(_format, _catalog, nil), do: []
+    defp format_init_opts(_format, _catalog, spec) when spec == %{}, do: []
+
+    defp format_init_opts(_format, _catalog, current_spec) do
+      [current_spec: current_spec]
+    end
 
     defp run_stream(model, messages, req_opts, format, format_opts, pid) do
       case ReqLLM.stream_text(model, messages, req_opts) do

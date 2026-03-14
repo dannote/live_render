@@ -10,25 +10,35 @@ defmodule LiveRender.Format.JSONPatch do
 
   alias LiveRender.Format.Shared
 
+  alias LiveRender.SpecMerge
+
   @impl true
   def prompt(component_map, actions, opts) do
-    Shared.json_prompt(format_section(), component_map, actions, opts)
+    format_section()
+    |> Shared.json_prompt(component_map, actions, opts)
+    |> Shared.with_edit_mode(opts, &edit_section/0)
   end
 
   @impl true
-  def parse(text, _opts \\ []) do
+  def parse(text, opts \\ []) do
+    current_spec = Keyword.get(opts, :current_spec)
+
     case extract_fence(text) do
-      {:ok, content} -> parse_jsonl(content)
-      :none -> try_raw_json(text)
+      {:ok, content} -> parse_jsonl(content, current_spec)
+      :none -> try_raw_json(text, current_spec)
     end
   end
 
   @impl true
-  def stream_init(_opts \\ []) do
+  def stream_init(opts \\ []) do
+    current_spec = Keyword.get(opts, :current_spec)
+    base_spec = current_spec || %{"root" => nil, "elements" => %{}, "state" => %{}}
+
     %{
       buffer: "",
       in_fence: false,
-      spec: %{"root" => nil, "elements" => %{}, "state" => %{}}
+      spec: base_spec,
+      current_spec: current_spec
     }
   end
 
@@ -67,12 +77,20 @@ defmodule LiveRender.Format.JSONPatch do
   end
 
   defp process_single_line(state, events, line) do
-    case LiveRender.SpecPatch.parse_and_apply(state.spec, line) do
-      {:ok, new_spec} ->
+    case Jason.decode(line) do
+      {:ok, %{"__lr_edit" => true} = merge_patch} ->
+        patch = Map.delete(merge_patch, "__lr_edit")
+        new_spec = SpecMerge.merge(state.spec, patch)
         {%{state | spec: new_spec}, events ++ [{:spec, new_spec}]}
 
-      :skip ->
-        {state, events}
+      _ ->
+        case LiveRender.SpecPatch.parse_and_apply(state.spec, line) do
+          {:ok, new_spec} ->
+            {%{state | spec: new_spec}, events ++ [{:spec, new_spec}]}
+
+          :skip ->
+            {state, events}
+        end
     end
   end
 
@@ -87,21 +105,33 @@ defmodule LiveRender.Format.JSONPatch do
     end
   end
 
-  defp parse_jsonl(content) do
+  defp parse_jsonl(content, current_spec) do
+    base_spec = current_spec || %{"elements" => %{}, "state" => %{}}
+
     spec =
       content
       |> String.split("\n")
-      |> Enum.reduce(%{"elements" => %{}, "state" => %{}}, fn line, spec ->
-        case LiveRender.SpecPatch.parse_and_apply(spec, line) do
-          {:ok, new_spec} -> new_spec
-          :skip -> spec
-        end
-      end)
+      |> Enum.reduce(base_spec, &apply_line/2)
 
     {:ok, spec}
   end
 
-  defp try_raw_json(text) do
+  defp apply_line(line, spec) do
+    trimmed = String.trim(line)
+
+    case Jason.decode(trimmed) do
+      {:ok, %{"__lr_edit" => true} = merge_patch} ->
+        SpecMerge.merge(spec, Map.delete(merge_patch, "__lr_edit"))
+
+      _ ->
+        case LiveRender.SpecPatch.parse_and_apply(spec, line) do
+          {:ok, new_spec} -> new_spec
+          :skip -> spec
+        end
+    end
+  end
+
+  defp try_raw_json(text, _current_spec) do
     trimmed = String.trim(text)
 
     if String.starts_with?(trimmed, "{") do
@@ -146,6 +176,28 @@ defmodule LiveRender.Format.JSONPatch do
     {"op":"add","path":"/state/items/-","value":{"id":"2","name":"Second"}}
 
     Supported ops: add, replace, remove.
+    """
+  end
+
+  defp edit_section do
+    """
+    ## Editing existing specs (merge)
+
+    When editing an existing spec, you can output a single JSON merge line instead of patches.
+    Set "__lr_edit" to true and include only the keys that changed.
+    Unmentioned keys are preserved. Set a key to null to delete it.
+
+    Example (update title, add element):
+    ```spec
+    {"__lr_edit":true,"elements":{"heading":{"props":{"title":"New Title"}},"new-chart":{"type":"chart","props":{},"children":[]}}}
+    ```
+
+    Example (delete an element):
+    ```spec
+    {"__lr_edit":true,"elements":{"old-widget":null}}
+    ```
+
+    You may also mix merge lines with patch operations in the same fence.
     """
   end
 end
